@@ -215,3 +215,25 @@ def test_the_whole_repository_passes_the_source_profile():
     """What CI runs: nothing anywhere in the repository is shaped like a credential."""
     from conftest import ROOT
     assert scanner.main(["--profile", "source", str(ROOT)]) == 0
+
+
+def test_whole_repository_scan_treats_recorded_evidence_as_evidence(tmp_path):
+    """Found when the first history entry was recorded: CI scans the whole repository with the
+    source profile, and real evidence (signed NVIDIA tokens, an Intel signature field, a binary
+    HPKE key configuration) is none of the things that profile allows."""
+    jwt = "ey" + "J" + A[:20] + "." + "ey" + "J" + A[:20] + "." + A[:20]
+    recorded = tmp_path / "history" / "evidence" / "2026" / "11" / "24" / "120000Z-abcd1234"
+    recorded.mkdir(parents=True)
+    (recorded / "evidence.json").write_text(json.dumps({"evidence": {"gpu_evidence": {"eat_jwts": [jwt]}, "ehbp": {"key_config": A}}}))
+    (recorded / "collateral.json").write_text(json.dumps({"qe_identity_signature": "ab" * 64}))
+    (recorded / "hpke-keys.bin").write_bytes(b"\xff\xfe\x00")
+    assert scanner.main(["--profile", "source", str(tmp_path)]) == 0
+    # The same content anywhere else is still refused by the source profile ...
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "copy.json").write_text((recorded / "evidence.json").read_text())
+    assert scanner.main(["--profile", "source", str(tmp_path)]) == 1
+    (tmp_path / "tools" / "copy.json").unlink()
+    # ... and a real credential shape is refused inside recorded evidence too.
+    (recorded / "statusz.json").write_text(json.dumps({"note": "hf_" + "a" * 34}))
+    assert scanner.main(["--profile", "source", str(tmp_path)]) == 1
+    assert scanner.profile_for(recorded / "evidence.json", "strict") == "strict"
