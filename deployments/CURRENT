@@ -1,9 +1,12 @@
-v0.1.0-rc.33
+v0.1.0-rc.33-os-0.6.5
 # Status: ROLLED OUT, NOT YET VERIFIED LIVE
-# The policy of this release is pending: measurements, TLS pin and receipt key pending first live attestation.
-# Rolled out on 2026-11-24. The service is not answering yet: after the
-# hosting provider's KMS and OS image migration that day, one of the eight
-# GPUs fails to initialise and the provider is working on it. No attestation
-# of this release has been observed, so the values listed under
-# pending.missing are left out of policy.json instead of guessed. Every value
-# that is in policy.json is final.
+# The policy of this release is pending: measurements, TLS pin and receipt key pending first verified live attestation.
+# Rolled out on 2026-11-24 on the OS image dstack-0.6.5, which the hosting
+# provider put in place of dstack-nvidia-0.5.15 that day; this replaces
+# v0.1.0-rc.33, which never served. The proxy came up on it at 14:47 UTC and
+# the model was ready at 15:01 UTC; the VM was restarted at 15:39 UTC to
+# replace one sealed variable, with the same configuration. This release has
+# not been verified here against the live endpoint yet, so the values listed
+# under pending.missing are left out of policy.json instead of guessed. Every
+# value that is in policy.json is final. Note: GPU attestation by the OS is
+# disabled in the measured manifest (attest_gpu=false); see CHANGELOG.md.

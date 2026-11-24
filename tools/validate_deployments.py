@@ -8,7 +8,11 @@ For every release directory (any directory except TEMPLATE):
   * policy.json, app-compose.json, docker-compose.yml exist;
   * no file looks like it contains a credential (tools/check_no_secrets.py);
   * policy.json carries well-formed TDX pins;
-  * SHA-256(app-compose.json) == policy.tdx.compose_hash;
+  * SHA-256(app-compose.json) == policy.tdx.compose_hash, and the file is in
+    the measured form (sorted keys, compact, no null values);
+  * when the manifest is one whose OS measures the GPU policy (manifest
+    version 3, or an explicit requirements.gpu_policy), policy.tdx.gpu_policy_hash
+    is present and equals SHA-256(JCS(requirements.gpu_policy));
   * docker-compose.yml is byte-identical to docker_compose_file in app-compose.json;
   * COMPOSE_DIGEST recomputes and equals policy.deployment_configuration_digest;
   * every image is pinned by digest;
@@ -40,6 +44,18 @@ tdx.compose_hash and tdx.os_image_hash are still required, and "missing" must
 name exactly what is absent. Such a release is reported as PENDING (exit 0, or
 1 with --fail-on-pending); verify/verify.py never returns PASS against it.
 
+Superseded releases
+-------------------
+A pending release can be overtaken before it ever answers: the platform
+changes, and what was rolled out never serves a request. Its directory stays
+exactly as published (releases are immutable) and can never be completed.
+That is recorded in CHANGELOG.md, whose section for the release then starts
+with a line "- Status: SUPERSEDED BEFORE IT EVER SERVED ...". Such a release
+is reported as SUPERSEDED, is not counted by --fail-on-pending, must not be
+named by CURRENT, and is never offered to the recorder as the pending release.
+Only a pending release can be superseded: a release with a final policy has
+served and stays a release.
+
 --immutable-since GIT_REV fails if a published release file changed since that
 revision. The one permitted change is completing a pending policy.json: values
 may be added, none that was published may change or disappear.
@@ -66,6 +82,8 @@ REQUIRED = ("policy.json", "app-compose.json", "docker-compose.yml")
 HEX_LEN = {"mrtd": 96, "rtmr0": 96, "rtmr1": 96, "rtmr2": 96, "app_id": 40, "compose_hash": 64, "os_image_hash": 64}
 MEASUREMENT_KEYS = tuple(HEX_LEN)
 PENDING = "pending"
+SUPERSEDED = "superseded"
+SUPERSEDED_STATUS = "SUPERSEDED BEFORE IT EVER SERVED"
 # What a pending policy may leave out: only values that the first live
 # attestation supplies. The identity of the release (app_id, compose_hash,
 # os_image_hash) is known at rollout and is never optional.
@@ -141,11 +159,29 @@ def pending_errors(policy: dict) -> list[str]:
     return errors
 
 
+def changelog_text(root: Path) -> str:
+    try:
+        return (root / "CHANGELOG.md").read_text()
+    except OSError:
+        return ""
+
+
+def changelog_section(changelog: str, name: str) -> str:
+    m = re.search(r"(?ms)^##[ \t]+%s[ \t]*\n(.*?)(?=^## |\Z)" % re.escape(name), changelog)
+    return m.group(1) if m else ""
+
+
+def is_superseded(changelog: str, name: str) -> bool:
+    """The release's changelog section carries the status line "- Status: SUPERSEDED BEFORE IT EVER SERVED ..."."""
+    return re.search(r"(?m)^- Status: %s\b" % re.escape(SUPERSEDED_STATUS), changelog_section(changelog, name)) is not None
+
+
 def load_pending(root: Path) -> dict:
-    """{release name: {app_id, compose_hash, os_image_hash}} for releases whose policy is pending."""
+    """{release name: {app_id, compose_hash, os_image_hash}} for releases whose policy is pending and that can still be completed."""
     out = {}
+    changelog = changelog_text(root)
     for d in releases(root):
-        if is_placeholder(d) or not (d / "policy.json").exists():
+        if is_placeholder(d) or not (d / "policy.json").exists() or is_superseded(changelog, d.name):
             continue
         try:
             policy = json.loads((d / "policy.json").read_text())
@@ -203,12 +239,19 @@ def check_release(policy_raw: bytes, app_raw: bytes, compose_text: str, label: s
     if published != tdx.get("compose_hash"):
         hint = " (the file is not in canonical form; run tools/canonicalize_app_compose.py)" if canonical == tdx.get("compose_hash") else ""
         errors.append("SHA-256(app-compose.json) is %s, policy.tdx.compose_hash is %s%s" % (published, tdx.get("compose_hash"), hint))
+    elif canonical != published:
+        errors.append("app-compose.json hashes to policy.tdx.compose_hash but is not in the measured form "
+                      "(sorted keys, compact separators, no null values): the hash rule in verify/avlib/compose.py does not reproduce it")
     app = {}
     try:
         app = json.loads(app_raw)
+        if not isinstance(app, dict):
+            raise ValueError
         if app.get("docker_compose_file") != compose_text:
             errors.append("docker-compose.yml differs from docker_compose_file inside app-compose.json")
+        errors += gpu_policy_errors(tdx, app)
     except ValueError:
+        app = {}
         errors.append("app-compose.json is not valid JSON")
     try:
         declared, computed = compose.self_digest(compose_text)
@@ -220,6 +263,28 @@ def check_release(policy_raw: bytes, app_raw: bytes, compose_text: str, label: s
     except ValueError as exc:
         errors.append(str(exc))
     return errors + compose_rules(policy, app, compose_text)
+
+
+def gpu_policy_errors(tdx: dict, app: dict) -> list[str]:
+    """policy.tdx.gpu_policy_hash must be the hash of the manifest's GPU policy whenever the OS measures one."""
+    pinned = tdx.get("gpu_policy_hash")
+    try:
+        expected = compose.gpu_policy_hash(compose.gpu_policy(app))
+    except compose.ComposeViolation as exc:
+        return [str(exc)]
+    if pinned is None:
+        if compose.measures_gpu_policy(app):
+            return ["policy.tdx.gpu_policy_hash is missing: this manifest's OS measures the GPU policy "
+                    "(expected %s = SHA-256(JCS(requirements.gpu_policy)))" % expected]
+        return []
+    if not re.fullmatch(r"[0-9a-f]{64}", str(pinned)):
+        return ["policy.tdx.gpu_policy_hash must be 64 lowercase hex characters"]
+    if not compose.measures_gpu_policy(app):
+        return ["policy.tdx.gpu_policy_hash is set, but this manifest (version %s, no requirements.gpu_policy) is not one whose OS "
+                "measures a GPU policy" % (compose.manifest_version(app) or "unknown")]
+    if pinned != expected:
+        return ["policy.tdx.gpu_policy_hash is %s, the manifest's requirements.gpu_policy hashes to %s" % (pinned, expected)]
+    return []
 
 
 def compose_rules(policy: dict, app: dict, compose_text: str) -> list[str]:
@@ -329,7 +394,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     root = Path(args.root)
-    changelog = (root / "CHANGELOG.md").read_text() if (root / "CHANGELOG.md").exists() else ""
+    changelog = changelog_text(root)
     failed, report = False, []
     for d in releases(root):
         if is_placeholder(d):
@@ -343,11 +408,20 @@ def main(argv=None) -> int:
                 policy = json.loads((d / "policy.json").read_text())
             except (OSError, ValueError):
                 policy = None
-            if is_pending(policy):
+            superseded = is_superseded(changelog, d.name)
+            if superseded and not is_pending(policy):
+                errors.append("CHANGELOG.md marks this release %r, but its policy is final: only a release that was never "
+                              "verified can be superseded" % SUPERSEDED_STATUS)
+                status, failed = "invalid", True
+            elif superseded:
+                note = "never served; its policy stays pending and is never completed (see CHANGELOG.md)"
+                status = "invalid" if errors else SUPERSEDED
+            elif is_pending(policy):
                 note = pending_reason(policy)
                 status = "invalid" if errors else PENDING
                 failed |= args.fail_on_pending
-        report.append({"release": d.name, "status": status, "errors": errors, **({"pending": note} if status == PENDING else {})})
+        report.append({"release": d.name, "status": status, "errors": errors,
+                       **({"pending": note} if status in (PENDING, SUPERSEDED) else {})})
     current, comments = read_current(root)
     top = []
     if not current or "/" in current or current.startswith(".") or not (root / current).is_dir():
@@ -359,6 +433,9 @@ def main(argv=None) -> int:
         says_unverified = any(c.startswith(CURRENT_STATUS) for c in comments)
         if state == PENDING and not says_unverified:
             top.append("deployments/CURRENT names a pending release and must say so: add the line %r" % CURRENT_STATUS)
+        if state == SUPERSEDED:
+            top.append("deployments/CURRENT names %s, which CHANGELOG.md marks %r; point it at the release that replaced it"
+                       % (current, SUPERSEDED_STATUS))
         if state == "valid" and says_unverified:
             top.append("deployments/CURRENT still says %r, but the policy of %s is final" % (NOT_VERIFIED, current))
     failed |= bool(top)

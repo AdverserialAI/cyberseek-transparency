@@ -65,7 +65,7 @@ ADVICE = {
     "error": "The recorder or the workflow itself failed; no conclusion about the endpoint can be drawn from this run.",
 }
 STATE = re.compile(r"<!-- recorder-state: (\{.*?\}) -->")
-SHOWN = ("timestamp", "verdict", "failed", "skipped", "policy_state", "deployment", "expected_deployment", "pending_deployment",
+SHOWN = ("timestamp", "verdict", "failed", "skipped", "warnings", "policy_state", "deployment", "expected_deployment", "pending_deployment",
          "measurements_changed", "compose_hash", "os_image_hash", "error")
 
 

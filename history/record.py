@@ -29,7 +29,10 @@ Exit status (the workflow reports anything but 0 in one issue, see tools/recorde
        PASS by itself once the policy is completed
 
 Every line also carries "policy_state": "final", "pending", or null when
-deployments/CURRENT names no usable release.
+deployments/CURRENT names no usable release, and "warnings": the checks that
+ended in WARN (for example gpu.os_attestation while the measured manifest
+says "attest_gpu": false), with "gpu_os_attestation" naming the state:
+"attested-at-boot", "disabled-by-policy" or "not-supported-by-os".
 """
 from __future__ import annotations
 
@@ -166,6 +169,9 @@ def record(args) -> tuple[dict, int]:
         "mode": result.mode,
         "failed": [c["id"] for c in result.checks if c["status"] == checks.FAIL],
         "skipped": [c["id"] for c in result.checks if c["status"] == checks.SKIP],
+        "warnings": [c["id"] for c in result.checks if c["status"] == checks.WARN],
+        "gpu_policy_hash": summary.get("gpu_policy_hash"),
+        "gpu_os_attestation": summary.get("gpu_os_attestation"),
         "measurements": summary.get("measurements"),
         "app_id": summary.get("app_id"),
         "compose_hash": summary.get("compose_hash"),

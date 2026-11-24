@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "status": "pending",
+  "pending": {
+    "reason": "measurements, TLS pin and receipt key pending first verified live attestation",
+    "missing": [
+      "tdx.mrtd",
+      "tdx.rtmr0",
+      "tdx.rtmr1",
+      "tdx.rtmr2",
+      "tls_spki_sha256",
+      "receipt_keys",
+      "model_artifact_digest"
+    ],
+    "since": "2026-11-24",
+    "detail": "Rolled out on 2026-11-24 on the OS image dstack-0.6.5, which the hosting provider put in place of dstack-nvidia-0.5.15 that day; this replaces v0.1.0-rc.33, which never served. The proxy came up on it at 14:47 UTC and the model was ready at 15:01 UTC; the VM was restarted at 15:39 UTC to replace one sealed variable, with the same configuration. This release has not been verified here against the live endpoint yet, so the values listed under pending.missing are left out of policy.json instead of guessed. Every value that is in policy.json is final. Note: GPU attestation by the OS is disabled in the measured manifest (attest_gpu=false); see CHANGELOG.md."
+  },
+  "policy_id": "adverserial-policy/cyberseek",
+  "model_id": "adverserial/cyberseek",
+  "proxy_version": "v0.1.0-rc.33",
+  "deployment_configuration_digest": "sha256:96ba75d8d59d93069da02661e2e6078f82b4cd7d2745a5b8b528057809831da4",
+  "runtime_image_digest": "sha256:b4f09a2ccbcfcc262d49600c3cd7f8581a793ea7d104947257b6a95500953b90",
+  "proxy_image_digest": "sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b",
+  "allowed_runtime": {
+    "tee": [
+      "intel-tdx"
+    ],
+    "gpu_attestation": [
+      "nvidia-cc"
+    ],
+    "minimum_gpu_count": 8
+  },
+  "tdx": {
+    "app_id": "b74e3dde6292cc69bac759b22fc723a299aa8a83",
+    "compose_hash": "9c78bf82dfad3a133838f2ac87406b3fe1c9d875d8a4d5fbe04e9f34d7d3b820",
+    "os_image_hash": "4771a29e03e93f0e2d5e37174cd8bb1112942c9689deb36b16c5df9e183d8623",
+    "gpu_policy_hash": "930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d"
+  },
+  "freshness": {
+    "attestation_receipt_ttl_seconds": 300,
+    "gpu_evidence_max_age_seconds": 1800
+  },
+  "verifier": {
+    "accepted_tcb_status": [
+      "UpToDate"
+    ],
+    "allowed_envs": [
+      "HF_TOKEN",
+      "CLOUDFLARE_API_TOKEN",
+      "NV_ATTESTATION_SERVICE_KEY",
+      "METER_INGRESS_SHARED_SECRET"
+    ],
+    "proxy_service": "attest-proxy",
+    "inference_service": "sglang",
+    "enclave_key_proxy_digests": [
+      "sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b"
+    ]
+  }
+}

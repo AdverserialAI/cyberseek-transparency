@@ -6,6 +6,10 @@
 
 Exit status: 0 = PASS, 1 = FAIL, 2 = INCOMPLETE (a check was skipped), 3 = usage or fetch error.
 
+A WARN line does not change the exit status: the evidence matches the published
+policy, but the policy switches a protection off (today: `gpu.os_attestation`).
+It is printed in the list and again above the verdict.
+
 A release whose policy.json is marked "status": "pending" was published before
 its first live attestation. Against such a policy the verdict is never PASS:
 at best INCOMPLETE, with the reason on the `policy.not_pending` line.
@@ -192,10 +196,15 @@ def render(result: checks.Result) -> str:
         lines.append("[%-4s] %-*s  %s" % (c["status"], width, c["id"], c["title"]))
         if c["detail"]:
             lines.append("        %s  %s" % (" " * width, c["detail"]))
-    counts = {s: sum(1 for c in result.checks if c["status"] == s) for s in ("PASS", "FAIL", "SKIP", "N/A")}
+    counts = {s: sum(1 for c in result.checks if c["status"] == s) for s in ("PASS", "FAIL", "SKIP", "N/A", "WARN")}
     lines.append("")
-    lines.append("%d passed, %d failed, %d skipped, %d not applicable in %s mode" % (
-        counts["PASS"], counts["FAIL"], counts["SKIP"], counts["N/A"], result.mode))
+    warnings = [c for c in result.checks if c["status"] == "WARN"]
+    for c in warnings:
+        # Said twice on purpose: once in the list, once next to the verdict, where it cannot be scrolled past.
+        lines.append("WARNING (%s): %s" % (c["id"], c["detail"]))
+    lines += [""] if warnings else []
+    lines.append("%d passed, %d failed, %d skipped, %d not applicable, %d warning%s in %s mode" % (
+        counts["PASS"], counts["FAIL"], counts["SKIP"], counts["N/A"], counts["WARN"], "" if counts["WARN"] == 1 else "s", result.mode))
     note = {"PASS": "every check that could run passed",
             "FAIL": "at least one property is false - do not trust this endpoint",
             "INCOMPLETE": "nothing failed, but skipped checks leave properties unproven"}[result.verdict]
@@ -203,6 +212,8 @@ def render(result: checks.Result) -> str:
         note += "; a saved file proves nothing about freshness or the live TLS key"
     if result.verdict == "INCOMPLETE" and result.summary.get("policy_pending"):
         note = "the policy for this release is pending: " + result.summary["policy_pending"]
+    if warnings:
+        note += "; %d WARNING%s above: %s" % (len(warnings), "" if len(warnings) == 1 else "S", ", ".join(c["id"] for c in warnings))
     lines.append("VERDICT: %s (%s)" % (result.verdict, note))
     return "\n".join(lines)
 

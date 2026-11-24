@@ -5,11 +5,12 @@
 
 `cvm.json` is the JSON the Phala Cloud API returns for the VM (it has a
 "compose_file" object and a "compose_hash"), or a bare app-compose object.
-The tool writes app-compose.json in the exact canonical bytes that dstack
-hashes, plus docker-compose.yml extracted from it, and REFUSES to write
-anything if
+The tool rebuilds the exact bytes the guest measured (the rule, and its one
+difference between manifest version 2 and "3", is in verify/avlib/compose.py),
+writes them as app-compose.json plus docker-compose.yml extracted from it, and
+REFUSES to write anything if
 
-  * the canonical bytes do not hash to the snapshot's compose_hash, or
+  * those bytes do not hash to the snapshot's compose_hash, or
   * tools/check_no_secrets.py finds something that looks like a credential.
 
 A compose that still contains literal secrets cannot be published: its hash

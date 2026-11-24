@@ -1,4 +1,4 @@
-"""dstack event-log replay (dstack 0.5.x, event log V1).
+"""dstack event-log replay (dstack 0.5.x and 0.6.x, event log V1).
 
 Each RTMR starts as 48 zero bytes and is extended as
     rtmr = SHA-384(rtmr || event_digest)
@@ -9,6 +9,23 @@ recomputable from the event's name and payload:
 so the app id, compose hash, OS image hash and key provider are tied to the
 signed quote. RTMR0-2 events (firmware, kernel, initrd) only carry digests;
 they are replayed too, and the resulting values are compared with the quote.
+
+RTMR3 event order, as written by the guest OS:
+
+  dstack 0.5.x  system-preparing, app-id, compose-hash, instance-id,
+                boot-mr-done, os-image-hash, key-provider, system-ready
+  dstack 0.6.x  system-preparing, app-id, compose-hash, [init-script-hash...],
+                gpu-policy-hash, instance-id, boot-mr-done, os-image-hash,
+                key-provider, [gpu-attestation], storage-fs,
+                storage-encrypted, system-ready
+
+`gpu-policy-hash` is SHA-256 of the canonical (RFC 8785) form of the
+manifest's `requirements.gpu_policy`. `gpu-attestation` is written only when
+the OS itself attested the GPUs before releasing keys; with
+`"attest_gpu": false` in the policy there is no such event. Both are optional
+(0.5.x has neither), but when present they must be unique and inside the same
+boundaries as the other trusted events, so that an application cannot add one
+after boot.
 
 Mirrors verifyTDXWorkload in the client kit (tdx-workload.js).
 """
@@ -21,6 +38,9 @@ import struct
 RUNTIME_EVENT_TYPE = 0x08000001
 BEFORE_BOOT_DONE = ("app-id", "compose-hash", "instance-id")
 BEFORE_READY = ("os-image-hash", "key-provider")
+# Written by dstack 0.6.x only. Absent is fine; present means exactly once and inside the boundary.
+OPTIONAL_BEFORE_BOOT_DONE = ("gpu-policy-hash",)
+OPTIONAL_BEFORE_READY = ("gpu-attestation",)
 
 
 class EventLogError(Exception):
@@ -94,6 +114,10 @@ def runtime_facts(events: list) -> dict:
     for name in BEFORE_READY:
         if lane.index(one(name)) >= lane.index(ready):
             raise EventLogError("%s was recorded outside the trusted system boundary" % name)
+    for names, boundary, what in ((OPTIONAL_BEFORE_BOOT_DONE, boot, "boot"), (OPTIONAL_BEFORE_READY, ready, "system")):
+        for name in names:
+            if any(e.get("event") == name for e in lane) and lane.index(one(name)) >= lane.index(boundary):
+                raise EventLogError("%s was recorded outside the trusted %s boundary" % (name, what))
     facts = {e["event"]: e["event_payload"] for e in lane}
     after_ready = [e["event"] for e in lane[lane.index(ready) + 1:]]
     facts["_events_after_system_ready"] = after_ready

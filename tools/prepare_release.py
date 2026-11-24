@@ -9,7 +9,7 @@ manifest in "compose_file" and its measured hash in "compose_hash"), a policy
 written for that deployment, and a release tag. Writes
 
     deployments/<tag>/docker-compose.yml   the compose text, byte for byte
-    deployments/<tag>/app-compose.json     the manifest in the canonical bytes dstack hashes
+    deployments/<tag>/app-compose.json     the manifest in the exact bytes the guest measured
     deployments/<tag>/policy.json          the policy, byte for byte
 
 then points deployments/CURRENT at <tag> (first line; for a pending release the
@@ -18,10 +18,13 @@ deployments/CHANGELOG.md.
 
 It REFUSES, and writes nothing at all, when
 
-  * the canonical manifest does not hash to the VM's compose_hash, or the
+  * the manifest bytes rebuilt from the VM description (the rule is in
+    verify/avlib/compose.py) do not hash to the VM's compose_hash, or the
     compose text does not hash to its docker_compose_hash;
   * the policy disagrees with the VM: tdx.compose_hash, tdx.app_id,
-    tdx.os_image_hash, deployment_configuration_digest (the COMPOSE_DIGEST);
+    tdx.os_image_hash, deployment_configuration_digest (the COMPOSE_DIGEST),
+    or tdx.gpu_policy_hash is not the hash of the manifest's
+    requirements.gpu_policy (manifest version 3);
   * anything in the three files looks like a credential
     (tools/check_no_secrets.py rules);
   * a static verifier check would fail on the release (operator-supplied
@@ -111,10 +114,14 @@ def build(snapshot: dict, policy_raw: bytes, expect_compose_hash: str | None = N
     if reasons:
         raise Refused(list(dict.fromkeys(reasons)))
     declared, _ = compose.self_digest(text)
+    gpu = compose.gpu_policy(app) if compose.measures_gpu_policy(app) else None
     return {"app-compose.json": app_raw, "docker-compose.yml": text.encode("utf-8"), "policy.json": policy_raw,
             "facts": {"compose_hash": actual, "compose_digest": declared, "os_image_hash": tdx.get("os_image_hash"),
                       "images": compose.images(text), "allowed_envs": sorted(app.get("allowed_envs") or []),
                       "proxy_version": policy.get("proxy_version"),
+                      "gpu_policy": None if gpu is None else "%s, gpu_policy_hash %s" % (
+                          json.dumps(gpu, sort_keys=True, separators=(",", ":")), compose.gpu_policy_hash(gpu)),
+                      "gpu_os_attestation": None if gpu is None else gpu.get("attest_gpu", True) is not False,
                       "pending": validate_deployments.pending_reason(policy) if validate_deployments.is_pending(policy) else None}}
 
 
@@ -135,6 +142,9 @@ def changelog_section(tag: str, facts: dict, rolled_out: str | None, changes: st
         "- COMPOSE_DIGEST: %s" % facts["compose_digest"],
         "- OS image: %sos_image_hash %s" % (os_image + ", " if os_image else "", facts["os_image_hash"]),
         MEASUREMENTS_PENDING if facts.get("pending") else MEASUREMENTS_FINAL,
+        *(["- GPU policy (requirements.gpu_policy in the measured manifest): %s. %s" % (
+            facts["gpu_policy"], "The OS attests the GPUs before releasing keys" if facts.get("gpu_os_attestation")
+            else "GPU attestation by the OS is DISABLED by this policy")] if facts.get("gpu_policy") else []),
         "- Images: %s" % ", ".join(facts["images"]),
         "- Operator-supplied variables (allowed_envs): %s" % (", ".join(facts["allowed_envs"]) or "none"),
         FIRST_ENTRY % ("none yet, pending first live attestation" if facts.get("pending") else TODO),
@@ -154,6 +164,8 @@ def complete_release(deployments: Path, tag: str, built: dict, completed_on: str
         return ["%s has no readable policy.json" % target]
     if not validate_deployments.is_pending(old):
         return ["%s is not pending; published releases are never rewritten" % target]
+    if validate_deployments.is_superseded(validate_deployments.changelog_text(deployments), tag):
+        return ["%s is marked superseded in CHANGELOG.md: it never served and is never completed" % target]
     reasons = []
     if built["facts"]["pending"]:
         reasons.append("the new policy is still marked pending; --complete needs the final policy")
@@ -220,7 +232,7 @@ def main(argv=None) -> int:
     ap.add_argument("--compose-hash", help="measured compose hash to require (default: the one in the VM description)")
     ap.add_argument("--rolled-out", help='for the changelog, e.g. "2026-11-24 18:30 UTC"')
     ap.add_argument("--changes", help="for the changelog: what changed and why")
-    ap.add_argument("--os-image", help='for the changelog: the name of the OS image, e.g. "dstack-nvidia-0.5.15"')
+    ap.add_argument("--os-image", help='for the changelog: the name of the OS image, e.g. "dstack-0.6.5"')
     ap.add_argument("--retire-placeholder", action="store_true",
                     help="also delete deployments/PENDING (only if it still holds its PLACEHOLDER file) and its changelog section")
     ap.add_argument("--pending", action="store_true",

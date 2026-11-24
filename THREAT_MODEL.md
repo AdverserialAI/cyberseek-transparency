@@ -33,6 +33,7 @@ the published dstack OS image (see "Residual trust").
 | Substitute a different HPKE or receipt key | `binding.report_data`, `keyatt.keys_match` |
 | Publish a billing key that is not the VM's | `keyatt.meter_key`: the served key set must be exactly the key in the quote-bound statement |
 | Boot a modified kernel or OS image | `policy.mrtd`, `policy.rtmr0-2`, `policy.os_image_hash` |
+| Quietly switch off the OS's GPU attestation, or claim it ran when it did not | The GPU policy is part of the measured manifest (`policy.compose_hash`) and is measured on its own (`policy.gpu_policy_hash`); `gpu.os_attestation` reports `WARN` on every run while it is off, and fails if the event log and the policy contradict each other. `eventlog.boot_order` rejects a `gpu-policy-hash` or `gpu-attestation` event written after boot |
 | Deploy a modified compose (extra logging container, different image) | `eventlog.replay`, `policy.compose_hash`, `compose.app_compose_hash`, `compose.images_pinned` |
 | Expose the model server directly, bypassing the proxy | `compose.inference_isolated`, `compose.single_ingress`: no published port, no host networking, internal network shared only with the proxy |
 | Change what the measured compose means through an unmeasured variable | `compose.unmeasured_inputs`: deploy-time substitution is accepted only as a whole environment value, for exactly the names the policy lists |
@@ -55,7 +56,21 @@ the published dstack OS image (see "Residual trust").
 * **A hardware or firmware break of Intel TDX or of NVIDIA's GPU isolation**,
   or a compromise of their signing keys.
 * **A malicious or flawed dstack OS image or KMS.** They are pinned and
-  identified, not audited.
+  identified, not audited. The `dstack-0.6.5` image is a public download whose
+  hash anyone can recompute, built from a public tag, but it carries no
+  signed build provenance and has not been rebuilt here.
+* **GPUs that are not in their protected mode.** In the current release the
+  measured manifest says `"attest_gpu": false`: the OS (dstack 0.6.5) releases
+  the VM's keys without attesting the GPUs or checking their confidential
+  mode, because its check does not recognise the multi-GPU Protected PCIe mode
+  that eight-GPU H200 machines use. The opt-out is visible (measured manifest,
+  `gpu-policy-hash` event, no `gpu-attestation` event, `WARN` on every run and
+  in every history line), but being visible is all it is: a host that left
+  the GPUs unprotected would not be caught by any check here. NVIDIA's remote
+  attestation, which the collector still obtains, proves genuine GPUs,
+  accepted firmware, secure boot and debug off; it does not by itself prove
+  Protected PCIe mode. dstack 0.5.x had no such check either, so this is not
+  a regression, but it is a gap.
 * **GPU substitution.** GPU evidence is not bound to the TDX quote. A hostile
   host that could attach a different, non-confidential GPU while the measured
   collector still obtains passing tokens from other GPUs would not be detected
@@ -96,19 +111,30 @@ the published dstack OS image (see "Residual trust").
   When the policy is completed, the measurements come from the first live
   attestation: compare them with the OS image vendor's published values
   yourself, as the person completing the policy is asked to.
+* **A release that never served.** `deployments/v0.1.0-rc.33/` was published
+  as pending on 2026-11-24 and overtaken the same day, when the hosting
+  provider replaced the OS image. Nothing was ever verified under it. It is
+  kept as published and marked superseded in the changelog; its policy can
+  never be completed.
 * **Verifier bugs.** This code is small so that it can be reviewed. Review it.
 
 ## Residual trust, in one sentence
 
 After a `PASS` you are trusting Intel, NVIDIA, the dstack OS image and KMS, the
 unaudited inference image, and your own reading of the published compose and
-proxy source; you are no longer trusting the operator's or the host's word.
+proxy source; you are no longer trusting the operator's or the host's word,
+with one exception while `gpu.os_attestation` reads `WARN`: that the host put
+the GPUs into their protected mode.
 
 ## Operational assumptions for this repository
 
-* `main` is protected: no force pushes, changes to `deployments/`, `verify/`,
-  `tools/` and `.github/` require review. The recorder is the only automated
-  writer and touches only `history/`.
+* `main` is meant to be protected: no force pushes, and changes to
+  `deployments/`, `verify/`, `tools/` and `.github/` require review. **As of
+  2026-11-24 that protection is not switched on yet**: the repository is new
+  and its owners push to `main` directly. Until it is on, the immutability of
+  published releases is enforced only on pull requests, and otherwise rests
+  on the Sigstore attestations of each deployment file and on anyone's clone.
+  The recorder is the only automated writer and touches only `history/`.
 * The recorder's workflow token is limited to contents, issues, attestations
   and OIDC signing. No deployment credential is ever present in this
   repository or its CI.

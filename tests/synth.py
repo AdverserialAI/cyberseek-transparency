@@ -89,7 +89,19 @@ def runtime_event(name: str, payload: bytes = b"") -> dict:
     return e
 
 
-def make_event_log(compose_hash: str) -> list:
+def make_event_log(compose_hash: str, gpu_policy_hash: str | None = None, gpu_attestation: bytes | None = None) -> list:
+    """dstack 0.5.x order by default; with a GPU policy hash, the order dstack 0.6.x writes."""
+    events = _make_event_log(compose_hash)
+    if gpu_policy_hash is None:
+        return events
+    names = [e["event"] for e in events]
+    events.insert(names.index("instance-id"), runtime_event("gpu-policy-hash", bytes.fromhex(gpu_policy_hash)))
+    tail = ([runtime_event("gpu-attestation", gpu_attestation)] if gpu_attestation is not None else []) + [
+        runtime_event("storage-fs", b"zfs"), runtime_event("storage-encrypted", b"1")]
+    return events[:-1] + tail + events[-1:]
+
+
+def _make_event_log(compose_hash: str) -> list:
     boot = [{"imr": i, "event_type": 4, "digest": hashlib.sha384(b"boot%d%d" % (i, n)).hexdigest(), "event": "", "event_payload": ""}
             for i in range(3) for n in range(2)]
     return boot + [
@@ -206,14 +218,21 @@ volumes:
 """
 
 
-def finish_compose(template: str, allowed_envs=None) -> tuple[str, bytes]:
-    """Fill in the image digests and the self-referential digest; return (compose text, canonical app-compose bytes)."""
+def finish_compose(template: str, allowed_envs=None, manifest_version=2, gpu_policy=None) -> tuple[str, bytes]:
+    """Fill in the image digests and the self-referential digest; return (compose text, canonical app-compose bytes).
+
+    manifest_version 2 is the dstack 0.5.x shape; "3" (a string) with a
+    gpu_policy is the dstack 0.6.x shape, where `"init_script":[]` is part of
+    the measured bytes."""
     for name, value in (("PROXY_DIGEST", PROXY_DIGEST), ("INFERENCE_DIGEST", INFERENCE_DIGEST), ("HELPER_DIGEST", HELPER_DIGEST)):
         template = template.replace("@" + name, "@" + value)
     digest = hashlib.sha256(template.encode()).hexdigest()
     text = template.replace("sha256:SELF", "sha256:" + digest)
     app = {"allowed_envs": list(SEALED if allowed_envs is None else allowed_envs), "docker_compose_file": text, "kms_enabled": True,
-           "manifest_version": 2, "name": "", "runner": "docker-compose", "pre_launch_script": "#!/bin/sh\ntrue\n"}
+           "manifest_version": manifest_version, "name": "", "runner": "docker-compose", "pre_launch_script": "#!/bin/sh\ntrue\n",
+           "init_script": []}
+    if gpu_policy is not None:
+        app["requirements"] = {"gpu_policy": gpu_policy}
     return text, compose.canonical_app_compose(app)
 
 
@@ -288,6 +307,17 @@ class Deployment:
         self.rtmrs = eventlog.replay(self.events)
         return self
 
+    def use_os_065(self, gpu_policy=None, gpu_attestation: bytes | None = None, pin: bool = True):
+        """Switch to the dstack 0.6.x shape: manifest version "3" with a GPU policy, and the 0.6.x event order."""
+        gpu_policy = {"attest_gpu": False} if gpu_policy is None else gpu_policy
+        self.compose_text, self.app_compose = finish_compose(COMPOSE_TEMPLATE, manifest_version="3", gpu_policy=gpu_policy)
+        self.compose_hash = hashlib.sha256(self.app_compose).hexdigest()
+        self.gpu_policy_hash = compose.gpu_policy_hash(gpu_policy)
+        self.pin_gpu_policy = pin
+        self.events = make_event_log(self.compose_hash, self.gpu_policy_hash, gpu_attestation)
+        self.rtmrs = eventlog.replay(self.events)
+        return self
+
     # -- documents -------------------------------------------------------
     def policy(self) -> dict:
         declared, _ = compose.self_digest(self.compose_text)
@@ -298,7 +328,8 @@ class Deployment:
             "allowed_runtime": {"minimum_gpu_count": 8},
             "freshness": {"gpu_evidence_max_age_seconds": 1800},
             "tdx": {"mrtd": "11" * 48, "rtmr0": self.rtmrs[0], "rtmr1": self.rtmrs[1], "rtmr2": self.rtmrs[2],
-                    "app_id": APP_ID, "compose_hash": self.compose_hash, "os_image_hash": OS_IMAGE_HASH},
+                    "app_id": APP_ID, "compose_hash": self.compose_hash, "os_image_hash": OS_IMAGE_HASH,
+                    **({"gpu_policy_hash": self.gpu_policy_hash} if getattr(self, "pin_gpu_policy", False) else {})},
             "verifier": {"accepted_tcb_status": ["UpToDate"], "allowed_envs": list(SEALED),
                          "proxy_service": "attest-proxy", "inference_service": "sglang",
                          "enclave_key_proxy_digests": [PROXY_DIGEST]},

@@ -1,6 +1,6 @@
 """The verification procedure: an ordered list of independent checks.
 
-Every check ends in one of four states:
+Every check ends in one of five states:
 
   PASS  the property was established
   FAIL  the property is false, or the evidence is malformed
@@ -8,6 +8,11 @@ Every check ends in one of four states:
         check makes the overall verdict INCOMPLETE, never PASS.
   N/A   the property cannot exist in this mode (for example freshness of a
         saved file). It does not change the verdict but is always printed.
+  WARN  the evidence is consistent with the published policy, but the policy
+        itself switches a protection off. It does not change the verdict
+        either: the deployment is what it says it is. It is printed again
+        above the verdict and recorded in the history on every run, so that
+        nobody reads a PASS as covering the property.
 
 A policy marked pending ("status": "pending", published before the release's
 first live attestation) can never yield PASS: `policy.not_pending` is skipped,
@@ -27,7 +32,8 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 from . import binding, canonjson, compose, dcap, eventlog, gpu, quote
 
-PASS, FAIL, SKIP, NA = "PASS", "FAIL", "SKIP", "N/A"
+PASS, FAIL, SKIP, NA, WARN = "PASS", "FAIL", "SKIP", "N/A", "WARN"
+GPU_OS_ATTESTATION_DISABLED = "GPU attestation by the OS is disabled by policy (attest_gpu=false)"
 DEFAULT_TCB = ("UpToDate",)
 MAX_CLOCK_SKEW_S = 300
 # The key statement carries no nonce; the proxy reuses one statement for 60 s.
@@ -46,6 +52,10 @@ class NotApplicable(Exception):
 
 
 class Failed(Exception):
+    pass
+
+
+class Warn(Exception):
     pass
 
 
@@ -125,6 +135,8 @@ def run(inp: Inputs) -> Result:
             detail, status = str(exc), SKIP
         except NotApplicable as exc:
             detail, status = str(exc), NA
+        except Warn as exc:
+            detail, status = str(exc), WARN
         except (Failed, quote.QuoteError, eventlog.EventLogError, gpu.GPUError, dcap.DcapUnavailable,
                 compose.ComposeViolation) as exc:
             detail, status = str(exc), SKIP if isinstance(exc, dcap.DcapUnavailable) else FAIL
@@ -264,7 +276,9 @@ def run(inp: Inputs) -> Result:
     def c_order():
         state["facts"] = eventlog.runtime_facts(events)
         extra = state["facts"]["_events_after_system_ready"]
+        optional = [n for n in eventlog.OPTIONAL_BEFORE_BOOT_DONE + eventlog.OPTIONAL_BEFORE_READY if n in state["facts"]]
         return "app-id, compose-hash, instance-id precede boot-mr-done; os-image-hash, key-provider precede system-ready" + (
+            "; also unique and inside the boundary: %s" % ", ".join(optional) if optional else "") + (
             "; events after system-ready: %s" % ", ".join(extra) if extra else "")
 
     facts_ok = check("eventlog.boot_order", "Launch identity events are unique and inside the boot boundary", c_order)
@@ -280,6 +294,20 @@ def run(inp: Inputs) -> Result:
                 raise Failed("no trusted %s event" % event)
             return _eq(fieldname, facts[event], tdx_policy.get(fieldname))
         check("policy." + fieldname, "%s matches the policy" % fieldname, c_fact)
+
+    def c_gpu_policy_pin():
+        measured, pinned = facts.get("gpu-policy-hash"), tdx_policy.get("gpu_policy_hash")
+        if not facts_ok:
+            raise Failed("no trusted event log to read gpu-policy-hash from")
+        if measured is None and not pinned:
+            raise NotApplicable("this OS image records no gpu-policy-hash event (dstack 0.5.x) and the policy pins none")
+        if measured is None:
+            raise Failed("the policy pins gpu_policy_hash %s, but the event log has no gpu-policy-hash event" % pinned)
+        if not pinned:
+            raise Skip("the OS measured gpu-policy-hash %s, but the policy does not pin tdx.gpu_policy_hash" % measured)
+        return _eq("gpu_policy_hash", measured, pinned)
+
+    check("policy.gpu_policy_hash", "gpu_policy_hash matches the policy", c_gpu_policy_pin)
 
     workload = ev.get("workload", {})
 
@@ -645,6 +673,49 @@ def run(inp: Inputs) -> Result:
 
     check("gpu.bound_to_vm", "GPU evidence is cryptographically bound to this VM", c_gpu_binding)
 
+    # ---- did the OS attest the GPUs before releasing keys? ------------------
+    # dstack 0.6.x measures the manifest's GPU policy ('gpu-policy-hash') and,
+    # unless that policy says "attest_gpu": false, attests every attached GPU
+    # and requires its Confidential Computing mode to be on before the VM gets
+    # its keys ('gpu-attestation'). dstack 0.5.x has neither event.
+    def c_gpu_os():
+        if not facts_ok:
+            raise Failed("no trusted event log to read the GPU policy from")
+        measured, attested = facts.get("gpu-policy-hash"), "gpu-attestation" in facts
+        if measured is None:
+            if attested:
+                raise Failed("the event log has a gpu-attestation event but no gpu-policy-hash event")
+            res.summary["gpu_os_attestation"] = "not-supported-by-os"
+            raise NotApplicable("this OS image (dstack 0.5.x event log) does not attest GPUs at boot; nothing in the measured "
+                                "boot chain verifies the GPUs, see gpu.evidence for the application-level check")
+        declared = None
+        if app is not None:
+            declared = compose.gpu_policy(app)
+            recomputed = compose.gpu_policy_hash(declared)
+            if recomputed != measured:
+                raise Failed("measured gpu-policy-hash %s is not SHA-256(JCS(requirements.gpu_policy)) = %s of the published manifest"
+                             % (measured, recomputed))
+        elif measured == compose.GPU_ATTESTATION_OFF_HASH:
+            declared = dict(compose.GPU_ATTESTATION_OFF)
+        if declared is None:
+            raise Skip("the OS measured gpu-policy-hash %s; the published app-compose.json is needed to read that policy" % measured)
+        if declared.get("attest_gpu", True) is False:
+            if attested:
+                raise Failed("the measured GPU policy says attest_gpu=false, yet the event log has a gpu-attestation event")
+            res.summary["gpu_os_attestation"] = "disabled-by-policy"
+            raise Warn("%s. The measured manifest carries requirements.gpu_policy = %s (gpu-policy-hash %s) and the event log has "
+                       "no gpu-attestation event: the OS released the VM's keys without attesting the GPUs or checking their "
+                       "confidential mode. Nothing in the measured boot chain verifies the GPUs' protected mode. What is "
+                       "checked instead is gpu.evidence and gpu.signatures (NVIDIA's remote attestation, not bound to the TDX quote)."
+                       % (GPU_OS_ATTESTATION_DISABLED, canonjson.dumps(declared), measured))
+        if not attested:
+            raise Failed("the measured GPU policy requires attestation by the OS, but the event log has no gpu-attestation event")
+        res.summary["gpu_os_attestation"] = "attested-at-boot"
+        return ("the OS attested the GPUs before releasing keys: gpu-policy-hash %s, gpu-attestation event %s..."
+                % (measured, facts["gpu-attestation"][:16]))
+
+    check("gpu.os_attestation", "The OS attested the GPUs and their confidential mode before releasing keys", c_gpu_os)
+
     # ---- summary ----------------------------------------------------------
     jwk = ev["receipt_pubkey_jwk"]
     res.summary.update({
@@ -654,6 +725,7 @@ def run(inp: Inputs) -> Result:
         "app_id": facts.get("app-id"),
         "compose_hash": facts.get("compose-hash"),
         "os_image_hash": facts.get("os-image-hash"),
+        "gpu_policy_hash": facts.get("gpu-policy-hash"),
         "instance_id": facts.get("instance-id"),
         "key_provider_sha256": hashlib.sha256(bytes.fromhex(facts["key-provider"])).hexdigest() if facts.get("key-provider") else None,
         "compose_digest": workload.get("compose_digest"),
@@ -670,5 +742,6 @@ def run(inp: Inputs) -> Result:
         },
         "images": state.get("images"),
         "verified_at": at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "warnings": [{"id": c["id"], "detail": c["detail"]} for c in res.checks if c["status"] == WARN],
     })
     return res

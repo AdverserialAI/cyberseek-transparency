@@ -6,17 +6,45 @@ compose_hash (measured by dstack into RTMR3 as the 'compose-hash' event)
 
 app-compose.json is the dstack manifest: a JSON object holding the whole
 docker compose text (docker_compose_file), the pre-launch script, the list of
-environment variable names the operator may set (allowed_envs) and feature
-flags. The bytes that Phala Cloud hashes are the canonical serialisation:
+environment variable names the operator may set (allowed_envs), feature flags
+and, from manifest version 3, `requirements` (which holds the GPU policy).
 
-  * keys sorted ascending,
-  * compact separators ("," and ":"), no trailing newline,
-  * UTF-8, non-ASCII emitted raw (as JavaScript's JSON.stringify does),
-  * keys whose value is null are absent,
-  * an empty "init_script" list is absent (the API view adds it as a default).
+The guest hashes the file it received and nothing else: no parsing, no
+re-serialisation. So the only rule that matters for a verifier is
 
-deployments/<release>/app-compose.json must be published in exactly that form,
-so that `sha256sum app-compose.json` is the compose hash with no tooling.
+    deployments/<release>/app-compose.json holds exactly the measured bytes,
+    and `sha256sum app-compose.json` is the compose hash, with no tooling.
+
+The bytes Phala Cloud hands to the guest are, as observed on this deployment:
+
+  * one JSON object, keys sorted ascending, at every level;
+  * compact separators ("," and ":"), no trailing newline;
+  * UTF-8, non-ASCII emitted raw (as JavaScript's JSON.stringify does);
+  * a key whose value is null is absent;
+  * nothing else is dropped: empty strings (`"name":""`), `false` and empty
+    lists are part of the bytes. One exception, for manifest version 2 only
+    (dstack 0.5.x): the Phala API view shows `"init_script":[]`, but the
+    measured bytes do not contain it. For manifest version "3" (dstack 0.6.x;
+    the version is the string "3", not a number) `"init_script":[]` IS in the
+    measured bytes.
+
+canonical_app_compose() applies that rule to turn the API's view of a VM
+(`compose_file` in `phala cvms get --json`, which adds null defaults) into the
+measured bytes. It reproduces every compose hash seen on this deployment:
+847813c4... (version 2, API view with init_script and nulls), 275c6e53...
+(version 2) and 9c78bf82... (version "3"). It is a reconstruction of what the
+platform does, not a specification; the release tools therefore refuse to
+write anything unless the result hashes to the VM's reported compose_hash,
+and the verifier compares the hash of the published bytes with the measured
+`compose-hash` event.
+
+gpu_policy_hash (measured by dstack 0.6.x into RTMR3 as 'gpu-policy-hash')
+--------------------------------------------------------------------------
+    gpu_policy_hash = SHA-256( JCS( app-compose.requirements.gpu_policy ) )
+
+JCS is RFC 8785 canonical JSON; an absent policy counts as `{}`
+(dstack-types, gpu_policy_hash). For {"attest_gpu":false} the value is
+930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d.
 
 COMPOSE_DIGEST (reported by the proxy as workload.compose_digest)
 -----------------------------------------------------------------
@@ -31,7 +59,7 @@ import hashlib
 import json
 import re
 
-from . import miniyaml, secretscan
+from . import canonjson, miniyaml, secretscan
 
 SELF = "sha256:SELF"
 _DIGEST_LINE = re.compile(r"COMPOSE_DIGEST\s*[:=]\s*[\"']?(sha256:[0-9a-f]{64}|sha256:SELF)")
@@ -58,14 +86,48 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def manifest_version(obj: dict) -> str:
+    """The manifest version as text: 2 (a number, dstack 0.5.x) -> "2"; "3" (a string, dstack 0.6.x) -> "3"."""
+    v = obj.get("manifest_version")
+    return str(v) if isinstance(v, (int, str)) and not isinstance(v, bool) else ""
+
+
 def canonical_app_compose(obj: dict) -> bytes:
-    """Canonical bytes of an app-compose object (see module docstring)."""
-    cleaned = {k: v for k, v in obj.items() if v is not None and not (k == "init_script" and v == [])}
+    """The measured bytes of an app-compose object, rebuilt from the API's view of it (see module docstring)."""
+    drop_empty_init = manifest_version(obj) == "2"
+    cleaned = {k: v for k, v in obj.items() if v is not None and not (drop_empty_init and k == "init_script" and v == [])}
     return json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+GPU_ATTESTATION_OFF = {"attest_gpu": False}
+
+
+def gpu_policy(app: dict) -> dict:
+    """`requirements.gpu_policy` of a manifest; an absent policy is the empty object, as in dstack."""
+    req = app.get("requirements") if isinstance(app, dict) else None
+    policy = req.get("gpu_policy") if isinstance(req, dict) else None
+    if policy is None:
+        return {}
+    if not isinstance(policy, dict):
+        raise ComposeViolation("requirements.gpu_policy in the manifest is not an object")
+    return policy
+
+
+def gpu_policy_hash(policy: dict) -> str:
+    """SHA-256 of the RFC 8785 (JCS) form of a GPU policy object: the payload of dstack's 'gpu-policy-hash' event."""
+    return sha256_hex(canonjson.dumps(policy).encode("utf-8"))
+
+
+GPU_ATTESTATION_OFF_HASH = gpu_policy_hash(GPU_ATTESTATION_OFF)
+
+
+def measures_gpu_policy(app: dict) -> bool:
+    """Whether the OS that boots this manifest records a 'gpu-policy-hash' event (manifest version 3, or an explicit policy)."""
+    return manifest_version(app) not in ("", "1", "2") or bool(isinstance(app.get("requirements"), dict) and "gpu_policy" in app["requirements"])
+
+
 def app_compose_hash(raw: bytes) -> tuple[str, str]:
-    """Return (hash of the bytes as published, hash of their canonical form)."""
+    """Return (hash of the bytes as published, hash of the bytes the canonical rule rebuilds from them)."""
     try:
         canonical = sha256_hex(canonical_app_compose(json.loads(raw)))
     except (ValueError, AttributeError):

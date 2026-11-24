@@ -1,19 +1,34 @@
 # Verify the Adverserial confidential inference deployment
 
-> **Status on 2026-11-24: rolled out, not yet verified live.**
+> **Status on 2026-11-24: rolled out on a new OS image, not yet verified live.**
 >
-> * **Rolled out 2026-11-24:** `attest-proxy` v0.1.0-rc.33, the first deployed
->   release that generates its keys inside the VM. Its compose, manifest,
->   compose hash and image digests are final and published in
->   [`deployments/v0.1.0-rc.33/`](deployments/v0.1.0-rc.33/).
-> * **Service restoring:** after the hosting provider's KMS and OS image
->   migration that day, one of the eight GPUs fails to initialise. The provider
->   is working on it and the endpoint does not answer yet.
-> * **First verified history entry: pending.** No attestation of this release
->   has been observed. Its `policy.json` is therefore marked `pending` and
->   holds no measurements, TLS pin or receipt key yet. Until it is completed
->   the verifier answers `INCOMPLETE` at best, never `PASS`, and nothing in
->   this repository claims the live service has been verified.
+> * **Running:** `attest-proxy` v0.1.0-rc.33, the first deployed release that
+>   generates its keys inside the VM, on the OS image `dstack-0.6.5`. Its
+>   compose, measured manifest, compose hash, OS image hash and image digests
+>   are final and published in
+>   [`deployments/v0.1.0-rc.33-os-0.6.5/`](deployments/v0.1.0-rc.33-os-0.6.5/).
+> * **What changed today:** the first rollout of rc.33, on
+>   `dstack-nvidia-0.5.15`, never served a request: one of the eight GPUs
+>   failed to initialise at every boot. At about 14:00 UTC the hosting
+>   provider moved the VM to `dstack-0.6.5`. That changed the OS image hash
+>   and the compose hash, so the directory published this morning,
+>   [`deployments/v0.1.0-rc.33/`](deployments/v0.1.0-rc.33/), is kept as
+>   published and marked *superseded before it ever served*. The docker
+>   compose text is byte-identical in both.
+> * **GPU attestation by the OS is switched off.** The provider added
+>   `"attest_gpu": false` to the measured manifest, because the check in
+>   `dstack-0.6.5` cannot handle this eight-GPU machine. Nothing in the
+>   measured boot chain currently verifies the GPUs' protected mode. The
+>   verifier says so on every run (`[WARN] gpu.os_attestation`). See
+>   [GPU evidence](#gpu-evidence-what-is-and-is-not-verified).
+> * **Service:** the proxy came up on the new image at 14:47 UTC and the model
+>   was ready at 15:01 UTC. The VM was restarted once more at 15:39 UTC to
+>   replace one sealed variable; the configuration did not change.
+> * **First verified history entry: pending.** This repository has not yet
+>   verified the live endpoint. The `policy.json` of the current release is
+>   therefore marked `pending` and holds no measurements, TLS pin or receipt
+>   key yet. Until it is completed the verifier answers `INCOMPLETE` at best,
+>   never `PASS`, and nothing here claims the live service has been verified.
 >
 > See [What is not here yet](#what-is-not-here-yet).
 
@@ -50,10 +65,10 @@ python3 -m pip install --require-hashes -r verify/requirements.txt
 python3 verify/verify.py https://api.adverserial.ai --deployment "deployments/$(head -n 1 deployments/CURRENT)"
 ```
 
-Today the third command ends with a connection error and a note that the
-policy is pending, because the service is not answering (see the status at the
-top). Once it answers, and before the policy is completed, it prints
-`VERDICT: INCOMPLETE` with the reason on the first line, `policy.not_pending`.
+Today the third command prints `VERDICT: INCOMPLETE` with the reason on the
+first line, `policy.not_pending`, because the policy of the current release is
+still pending (see the status at the top). While the VM is restarting it ends
+with a connection error and a note that the policy is pending.
 
 Against a completed policy you get one line per check and a verdict:
 
@@ -63,8 +78,11 @@ Against a completed policy you get one line per check and a verdict:
 [PASS] binding.report_data   Quote binds the nonce, TLS key, receipt key and HPKE (EHBP) key
 [PASS] policy.compose_hash   compose_hash matches the policy
 [PASS] keyatt.keys_origin    The measured proxy states that it generated its keys inside the VM
+[WARN] gpu.os_attestation    The OS attested the GPUs and their confidential mode before releasing keys
 ...
-VERDICT: PASS (every check that could run passed)
+WARNING (gpu.os_attestation): GPU attestation by the OS is disabled by policy (attest_gpu=false). ...
+
+VERDICT: PASS (every check that could run passed; 1 WARNING above: gpu.os_attestation)
 ```
 
 * `PASS` the property was established.
@@ -72,6 +90,12 @@ VERDICT: PASS (every check that could run passed)
 * `SKIP` an input was missing, for example no network access to Intel. A
   skipped check makes the verdict `INCOMPLETE`, never `PASS`.
 * `N/A` the property cannot exist in this mode. A saved file cannot be "fresh".
+* `WARN` the evidence matches the published policy, but the policy itself
+  switches a protection off. It does not change the verdict, because the
+  machine is exactly what this repository says it is. It is printed in the
+  list, again above the verdict, and written into every history line, so a
+  `PASS` is never read as covering that property. Today there is one:
+  `gpu.os_attestation`.
 
 A release can be published here before it has answered a single attestation.
 Its policy then carries `"status": "pending"` and lists what is missing. The
@@ -122,7 +146,9 @@ that chain to Intel, by hashes you can recompute, and by nothing else.
 2. **It booted the expected operating system.** The quote contains
    measurements of the virtual firmware (MRTD), kernel and boot files
    (RTMR0-2). They must equal the values in `policy.json`. The OS image hash
-   recorded at boot must equal the published one.
+   recorded at boot must equal the published one. For `dstack-0.6.5` that
+   hash can be recomputed from the public image, see
+   [What you still have to trust](#what-you-still-have-to-trust).
 
 3. **It runs exactly the published configuration.** Before starting any
    container, the OS records the SHA-256 of the application manifest
@@ -164,7 +190,9 @@ that chain to Intel, by hashes you can recompute, and by nothing else.
    (`compose.inference_isolated`, `compose.single_ingress`).
 
 7. **The GPUs passed NVIDIA's attestation**, as far as the proxy exposes it:
-   see [GPU evidence](#gpu-evidence-what-is-and-is-not-verified).
+   see [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). That
+   section also says what is *not* proven about the GPUs in the current
+   release, where the OS's own GPU check is switched off.
 
 Taken together: your prompt is encrypted to a key that exists only inside a
 machine running exactly the published software, and that software, which you
@@ -294,10 +322,51 @@ with itself; its absence changes nothing, and no trust decision rests on it.
 compose_hash   = SHA-256( bytes of app-compose.json )
 ```
 
-`app-compose.json` is published in the canonical form that dstack hashes: keys
-sorted, compact separators, UTF-8, no keys with null values, no empty
-`init_script`. So `sha256sum deployments/<release>/app-compose.json` is the
-compose hash.
+The guest hashes the manifest file it was given, byte for byte: no parsing, no
+re-serialisation. `app-compose.json` is published here as exactly those bytes,
+so
+
+```sh
+sha256sum deployments/<release>/app-compose.json
+```
+
+prints the compose hash with no tooling, and the verifier compares that with
+the `compose-hash` event in the hardware-signed log.
+
+Those bytes are one JSON object with keys sorted, compact separators (`,` and
+`:`), UTF-8, and no trailing newline. Compared with what the hosting
+provider's API shows for the VM, keys whose value is `null` are absent, and
+nothing else is: empty strings such as `"name":""`, `false` and empty lists
+are part of the bytes. There is one difference between manifest versions, and
+it is easy to get wrong:
+
+| Manifest | OS | `"init_script":[]` shown by the API |
+|---|---|---|
+| `"manifest_version":2` (a number) | dstack 0.5.x | is **not** in the measured bytes |
+| `"manifest_version":"3"` (a string) | dstack 0.6.x | **is** in the measured bytes |
+
+The rule lives in `verify/avlib/compose.py` and is used only to rebuild the
+bytes from the API's view when a release is prepared; the tools refuse to
+publish unless the result hashes to the compose hash the VM reports. The
+three compose hashes seen on this deployment are reproduced by it:
+`847813c4...` (an earlier release, version 2, whose compose held secrets and
+is not published), `275c6e53...`
+(`deployments/v0.1.0-rc.33`, version 2) and `9c78bf82...`
+(`deployments/v0.1.0-rc.33-os-0.6.5`, version "3"). The last two you can check
+with `sha256sum`.
+
+From manifest version 3 the OS measures one more value, the GPU policy:
+
+```
+gpu_policy_hash = SHA-256( canonical JSON (RFC 8785) of app-compose.requirements.gpu_policy )
+```
+
+It is recorded as the event `gpu-policy-hash`, before the VM gets its keys.
+For the current release the policy is `{"attest_gpu":false}`, and
+
+```sh
+printf '%s' '{"attest_gpu":false}' | sha256sum     # 930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d
+```
 
 ```
 COMPOSE_DIGEST = "sha256:" + SHA-256( docker-compose.yml with the COMPOSE_DIGEST
@@ -324,6 +393,49 @@ GPU firmware and driver measurements themselves, which NVIDIA's service
 compares against its own reference values. The verifier prints this limitation
 on every run as `[N/A ] gpu.bound_to_vm`.
 
+**Switched off in the current release: GPU attestation by the OS.**
+`dstack` 0.6.x can attest the GPUs itself, at boot: it asks each GPU for an
+attestation, requires each GPU's Confidential Computing mode to be on, and
+only then lets the VM obtain its keys. The result is recorded in the
+hardware-signed log as a `gpu-attestation` event. Whether it does this is
+decided by `requirements.gpu_policy` in the measured manifest, and in
+`deployments/v0.1.0-rc.33-os-0.6.5/app-compose.json` that policy is
+`{"attest_gpu":false}`.
+
+Why: a machine with eight H200 GPUs runs them in NVIDIA's multi-GPU *Protected
+PCIe* mode. In that mode the per-GPU Confidential Computing status reads
+"off". The check in `dstack-0.6.5` does not know that mode, sees "off", and
+refuses to boot. The hosting provider therefore disabled the check for this
+VM, and says it will add support for the mode and tell us when the flag can
+be removed.
+
+What that means, plainly:
+
+* The protection is the same as on dstack 0.5.x, which never had this check.
+  Nothing was taken away that an earlier release had.
+* Nothing in the measured boot chain currently verifies that the GPUs are in
+  their protected mode. A `PASS` from this verifier does not cover it.
+* The opt-out is public and cannot be hidden: it is in the measured manifest
+  (so it is covered by `compose_hash`), it is recorded as the event
+  `gpu-policy-hash` = `930188e0...a77d`, and the log has no `gpu-attestation`
+  event.
+* What is checked in the meantime is the evidence described above: our own
+  collector asks NVIDIA's remote attestation service, which establishes
+  genuine GPUs, firmware measurements NVIDIA accepts, secure boot on and debug
+  off. That evidence is not bound to the TDX quote, and it does not by itself
+  prove Protected PCIe mode.
+
+The verifier reports this as `[WARN] gpu.os_attestation`, with the text "GPU
+attestation by the OS is disabled by policy (attest_gpu=false)". It checks
+that the measured `gpu-policy-hash` is the hash of the policy in the published
+manifest and equals `tdx.gpu_policy_hash` in `policy.json`
+(`policy.gpu_policy_hash`). It fails if the log and the policy contradict each
+other: a `gpu-attestation` event although the policy says off, or none
+although the policy requires one. Both events must be unique and written
+before boot completes, so an application cannot add one later. When the flag
+is removed the manifest changes, so the compose hash changes, and that will
+be a new release directory here.
+
 ## How the history works
 
 Every 30 minutes a GitHub Actions workflow runs `history/record.py`. It picks
@@ -332,6 +444,7 @@ one line to `history/attestations.jsonl`:
 
 ```json
 {"seq":41,"timestamp":"...","nonce":"...","verdict":"PASS","failed":[],"skipped":[],
+ "warnings":["gpu.os_attestation"],"gpu_os_attestation":"disabled-by-policy","gpu_policy_hash":"...",
  "measurements":{"mrtd":"...","rtmr0":"...","rtmr1":"...","rtmr2":"...","rtmr3":"..."},
  "compose_hash":"...","os_image_hash":"...","app_id":"...","deployment":"<release>",
  "key_fingerprints":{"receipt_kid":"...","ehbp_public_key_sha256":"...","meter_kid":"...","key_statement_sha256":"..."},
@@ -345,6 +458,11 @@ one line to `history/attestations.jsonl`:
   also says whether the policy it was checked against was `final` or
   `pending` (`policy_state`). A line recorded against a pending policy is at
   best `INCOMPLETE`.
+* **Warnings are recorded.** `warnings` lists the checks that ended in
+  `WARN`, and `gpu_os_attestation` says whether the OS attested the GPUs at
+  boot (`attested-at-boot`), was told not to (`disabled-by-policy`), or cannot
+  (`not-supported-by-os`). The history therefore shows for how long the
+  opt-out lasted.
 * **Lines are chained.** `prev` is the SHA-256 of the previous line, so the
   hash of the last line (the *head*) commits to the entire file. Editing or
   deleting any earlier line breaks the chain. Check it with:
@@ -390,9 +508,32 @@ your prompts. It does not make the list empty.
   is processed in the clear inside GPU memory. The link between "these GPUs
   passed" and "these GPUs are in this VM" rests on measured software, not on a
   signature (see above).
+* **That the GPUs are in their protected mode.** In the current release the
+  OS does not attest the GPUs at boot (`"attest_gpu": false` in the measured
+  manifest, reported as `[WARN] gpu.os_attestation`). The eight GPUs are meant
+  to run in NVIDIA's multi-GPU Protected PCIe mode, which is set up by the
+  host. No signature that this verifier checks proves that mode: NVIDIA's
+  remote attestation proves genuine GPUs, accepted firmware, secure boot and
+  debug off, not the mode, and it is not bound to the TDX quote. Until the
+  hosting provider's OS can check that mode and the flag is removed, you are
+  trusting the host to have configured the GPUs as agreed. This is the same
+  position as on dstack 0.5.x.
 * **Phala's dstack OS image and key management service.** The OS image is
-  identified by hash and the verifier pins it, but neither this repository nor
-  the operator rebuilt it from source. The dstack KMS issues keys to the VM,
+  identified by hash and the verifier pins it. For `dstack-0.6.5` the image
+  is a public download,
+  <https://github.com/Dstack-TEE/dstack/releases/download/mkosi-os-v0.6.5/dstack-0.6.5.tar.gz>,
+  and anyone can recompute the hash: `os_image_hash` is the SHA-256 of the
+  file `sha256sum.txt` inside the archive, which in turn lists the hashes of
+  the firmware, kernel, initramfs and `metadata.json` (the kernel command
+  line there carries the root filesystem's hash). The result is
+  `4771a29e...8623`, the value in `policy.json` and in the `os-image-hash`
+  event. The image was built with `mkosi` from
+  [Dstack-TEE/dstack](https://github.com/Dstack-TEE/dstack) at the tag
+  `mkosi-os-v0.6.5` (commit `350a0a73`, also named in the image's
+  `metadata.json`). What that does not give you: the image carries no signed
+  build provenance, so "this archive was built from that tag" is the
+  publisher's statement, and neither this repository nor the operator has
+  rebuilt it from source or audited it. The dstack KMS issues keys to the VM,
   including disk encryption keys and the decryption of operator-supplied
   environment variables; its identity is recorded in the event log
   (`key-provider`) and in the history, but its behaviour is trusted. The
@@ -461,7 +602,7 @@ your prompts. It does not make the list empty.
 
 ## Why Python, and these two dependencies
 
-The verifier is about 2,300 lines of Python, comments included, with two direct dependencies,
+The verifier is about 2,500 lines of Python, comments included, with two direct dependencies,
 pinned by version and by hash:
 
 * [`cryptography`](https://cryptography.io) for X.509, ECDSA and hashing. It
@@ -511,23 +652,34 @@ secret scanner and by `tools/prepare_release.py`.
 
 As of 2026-11-24:
 
-* **Measurements, TLS pin and receipt key of v0.1.0-rc.33.**
-  `deployments/v0.1.0-rc.33/policy.json` is marked `pending`: it has the app
-  id, the compose hash, the OS image hash, the image digests and the verifier
-  settings, and it leaves out MRTD, RTMR0-2, the TLS key pin, the receipt key
-  and the model manifest digest, because those can only be taken from a live
-  attestation and none exists yet. They are added, and the pending mark is
-  removed, in one reviewed change once the endpoint answers
-  (`deployments/README.md`, "Completing a pending release"). Nothing that is
-  published now may change in that step; CI enforces it.
+* **Measurements, TLS pin and receipt key of the current release.**
+  `deployments/v0.1.0-rc.33-os-0.6.5/policy.json` is marked `pending`: it has
+  the app id, the compose hash, the OS image hash, the GPU policy hash, the
+  image digests and the verifier settings, and it leaves out MRTD, RTMR0-2,
+  the TLS key pin, the receipt key and the model manifest digest. Those are
+  taken from a live attestation that this repository has verified, and that
+  has not happened yet. They are added, and the pending mark is removed, in
+  one reviewed change (`deployments/README.md`, "Completing a pending
+  release"). Nothing that is published now may change in that step; CI
+  enforces it.
 * **A verified history entry.** `history/attestations.jsonl` holds no `PASS`
-  line. While the endpoint is down the recorder, once enabled with the
-  repository variable `RECORDER_ENABLED=true`, appends honest `UNREACHABLE`
-  lines; it starts recording `PASS` by itself when the policy is completed.
+  line. The recorder, once enabled with the repository variable
+  `RECORDER_ENABLED=true`, appends an honest line every 30 minutes
+  (`UNREACHABLE` while the endpoint is down, `INCOMPLETE` while the policy is
+  pending); it starts recording `PASS` by itself when the policy is
+  completed.
 * **A run against the live endpoint.** The verifier has been run against
-  synthetic data and the proxy's own test output, not yet against the live
-  v0.1.0-rc.33 endpoint. Until that has happened, treat this repository as a
-  description of what is deployed, not as evidence that it was verified.
+  synthetic data, the proxy's own test output and the event log of the
+  running VM as the hosting provider's API reports it, not yet against the
+  live v0.1.0-rc.33 endpoint. Until that has happened, treat this repository
+  as a description of what is deployed, not as evidence that it was verified.
+* **GPU attestation by the OS.** Switched off in the measured manifest, see
+  [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). Turning it on
+  needs a change in the hosting provider's OS and will be a new release here.
+* **`deployments/v0.1.0-rc.33/` will never be completed.** It describes the
+  configuration on `dstack-nvidia-0.5.15`, which never served. It stays as
+  published, with its pending policy, so that what was announced this morning
+  remains on record; `deployments/CHANGELOG.md` marks it superseded.
 
 ## Licence
 

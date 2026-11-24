@@ -1,7 +1,10 @@
 # deployments/
 
-One directory per release that has ever served production traffic. Releases are
+One directory per configuration that was rolled out to production. Releases are
 never edited after publication and never deleted: the history refers to them.
+A directory is named after the proxy release; when the same proxy release is
+rolled out again under a different measured configuration, the name says what
+changed (`v0.1.0-rc.33-os-0.6.5`: rc.33 on the OS image dstack-0.6.5).
 
     deployments/
       CURRENT                 first line: name of the directory that production should match;
@@ -17,22 +20,36 @@ never edited after publication and never deleted: the history refers to them.
 **app-compose.json** is the file whose SHA-256 is the `compose_hash` that the
 VM's operating system writes into the hardware-signed measurement log before
 any container starts. It embeds the whole docker compose text, the pre-launch
-script, and `allowed_envs`, the list of environment variable *names* the
-operator can set at deploy time. It must be published in canonical form (sorted
-keys, compact, no null values), so that
+script, `allowed_envs` (the list of environment variable *names* the operator
+can set at deploy time) and, from manifest version 3, `requirements`, which
+holds the GPU policy. It must be published as exactly the bytes the guest
+measured, so that
 
     sha256sum deployments/<release>/app-compose.json
 
-prints the compose hash with no tooling. See `verify/avlib/compose.py` for the
-exact rule.
+prints the compose hash with no tooling.
+
+The guest hashes the file it receives; it does not re-serialise it. The bytes
+are: one JSON object, keys sorted, compact separators, UTF-8, no trailing
+newline, no keys whose value is null. Everything else is kept, including
+`"name":""`. `"init_script":[]`, which the hosting provider's API shows for
+every VM, is **not** part of the bytes for `"manifest_version":2` (dstack
+0.5.x) and **is** part of them for `"manifest_version":"3"` (dstack 0.6.x;
+the version is a string there). `verify/avlib/compose.py` holds this rule and
+`tools/prepare_release.py` applies it to the VM description; it writes nothing
+unless the result hashes to the compose hash the VM reports. Proof for the two
+manifests published here:
+
+    sha256sum deployments/v0.1.0-rc.33/app-compose.json            # 275c6e53...1a1d, version 2
+    sha256sum deployments/v0.1.0-rc.33-os-0.6.5/app-compose.json   # 9c78bf82...b820, version "3"
 
 **docker-compose.yml** is the same compose text as a readable file. It must be
 byte-identical to `docker_compose_file` inside app-compose.json.
 
 **policy.json** lists what a verifier must find: `tdx.mrtd`, `tdx.rtmr0-2`
 (firmware, kernel, initrd), `tdx.os_image_hash`, `tdx.app_id`,
-`tdx.compose_hash`, image digests, the minimum GPU count, and a `verifier`
-block:
+`tdx.compose_hash`, `tdx.gpu_policy_hash` (manifest version 3 only, see
+below), image digests, the minimum GPU count, and a `verifier` block:
 
 | Key | Meaning |
 |---|---|
@@ -45,6 +62,50 @@ block:
 Optional pins, checked when present: `receipt_keys` (list of receipt key ids;
 the key is generated at first boot and kept on the encrypted disk, so it is
 stable across restarts) and `tls_spki_sha256`.
+
+## The GPU policy (manifest version 3, dstack 0.6.x)
+
+dstack 0.6.x measures `requirements.gpu_policy` of the manifest into the event
+log as `gpu-policy-hash`, before the VM gets its keys:
+
+    gpu_policy_hash = SHA-256( canonical JSON (RFC 8785) of requirements.gpu_policy )
+
+`policy.json` must carry that value as `tdx.gpu_policy_hash`;
+`tools/validate_deployments.py` recomputes it from the manifest. By default
+the OS then attests every GPU and requires its Confidential Computing mode to
+be on before it releases the keys, and records a `gpu-attestation` event.
+
+In `v0.1.0-rc.33-os-0.6.5` the policy is `{"attest_gpu":false}`
+(`gpu_policy_hash` `930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d`):
+the hosting provider switched the check off, because dstack 0.6.5 does not
+recognise the multi-GPU Protected PCIe mode of eight-GPU H200 machines and
+would refuse to boot. The protection is what it was on dstack 0.5.x, which had
+no such check, but nothing in the measured boot chain verifies the GPUs'
+protected mode. `verify/verify.py` reports this as `WARN gpu.os_attestation`
+on every run: it does not change the verdict, and it is written into every
+history line. The top-level `README.md` has the full explanation. Removing the
+flag changes the manifest and therefore the compose hash: it will be a new
+release directory.
+
+## Superseded releases
+
+A pending release can be overtaken before it ever answers. On 2026-11-24
+`v0.1.0-rc.33` was rolled out on the OS image dstack-nvidia-0.5.15, never
+served a request (one of eight GPUs failed to initialise at every boot), and
+was replaced the same day when the hosting provider moved the VM to
+dstack-0.6.5 and changed the manifest.
+
+Such a directory is not edited and not deleted. Its `policy.json` stays
+pending for good. What marks it is the first line of its section in
+`CHANGELOG.md`:
+
+    - Status: SUPERSEDED BEFORE IT EVER SERVED (<date>): <why>
+
+`tools/validate_deployments.py` then reports it as `SUPERSEDED`, does not
+count it under `--fail-on-pending`, refuses it as `CURRENT`, and
+`tools/prepare_release.py --complete` refuses to complete it. Only a pending
+release can be marked this way; a release with a final policy has served and
+stays a release.
 
 ## Pending releases
 
@@ -85,12 +146,22 @@ When the endpoint answers:
    checks must be `policy.not_pending` and `policy.mrtd`, `policy.rtmr0`,
    `policy.rtmr1`, `policy.rtmr2`. In particular `tdx.quote_signature`,
    `tdx.collateral_tcb`, `policy.compose_hash`, `policy.app_id`,
-   `policy.os_image_hash`, `compose.*` and `keyatt.*` must be `PASS`.
+   `policy.os_image_hash`, `policy.gpu_policy_hash`, `compose.*` and
+   `keyatt.*` must be `PASS`. `gpu.os_attestation` reads `WARN` for a release
+   whose manifest says `"attest_gpu": false`; that is expected and is not a
+   reason to stop, but `gpu.evidence` and `gpu.signatures` must be `PASS`.
 2. Take MRTD and RTMR0-2 from `summary.measurements` and compare them with the
    values the OS image vendor publishes for the image named in the changelog
    (for dstack, the image's reference measurements for this VM size). Do not
    copy them from the endpoint without that comparison: the endpoint is what
-   is being checked.
+   is being checked. For dstack-0.6.5 the MRTD is printed on the image's
+   release page
+   (<https://github.com/Dstack-TEE/dstack/releases/tag/mkosi-os-v0.6.5>);
+   RTMR0 depends on the VM's size (CPUs, memory, GPUs), so RTMR0-2 are
+   compared with what the vendor's `dstack-mr` tool computes from the
+   downloaded image for this VM's shape, or failing that with the values the
+   hosting provider's API reports for the VM, and the changelog entry says
+   which comparison was made.
 3. Copy `policy.json` out of the repository, delete `status` and `pending`,
    add `tdx.mrtd`, `tdx.rtmr0`, `tdx.rtmr1`, `tdx.rtmr2`, and the pins:
    `tls_spki_sha256` (`summary.tls_spki_sha256`), `receipt_keys`
@@ -138,7 +209,8 @@ the whole value of an environment variable.
    CHANGELOG section. It writes nothing if a hash does not match the VM, if
    anything looks like a credential, or if a static verifier check would fail.
    Add `--dry-run` to only check, and `--pending` when the policy is marked
-   pending (see above); then steps 4 and 5 wait for the completion.
+   pending (see above); then steps 4 and 5 wait for the completion. For a
+   manifest of version 3 the policy must carry `tdx.gpu_policy_hash`.
 4. `python verify/verify.py https://api.adverserial.ai --deployment deployments/<release>`
    must print `VERDICT: PASS`.
 5. `python tools/validate_deployments.py` must print `OK`. Open a pull request.
@@ -153,4 +225,7 @@ the rollout. If production shows measurements that match no directory here,
 the scheduled recorder fails and opens an issue.
 
 Published release files never change afterwards. The single exception is the
-completion of a pending `policy.json` described above.
+completion of a pending `policy.json` described above. When production changes
+before a pending release was ever verified, the release is not rewritten: a
+new directory is published and the old one is marked superseded in the
+changelog (see "Superseded releases").
