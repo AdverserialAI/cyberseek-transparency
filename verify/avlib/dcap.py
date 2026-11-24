@@ -28,7 +28,15 @@ def _lib():
 def fetch_collateral(raw_quote: bytes, pccs_url: str = INTEL_PCS) -> str:
     """Return collateral as a JSON string. Network access required."""
     lib = _lib()
-    return asyncio.run(lib.get_collateral(pccs_url, raw_quote)).to_json()
+
+    async def _fetch():
+        # dcap-qvl's get_collateral is a native function that needs the event
+        # loop to be running at the moment it is *called*, not only awaited:
+        # calling it first and handing the result to asyncio.run() fails with
+        # "no running event loop".
+        return await lib.get_collateral(pccs_url, raw_quote)
+
+    return asyncio.run(_fetch()).to_json()
 
 
 def verify(raw_quote: bytes, collateral_json: str, at_epoch: int) -> dict:
