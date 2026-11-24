@@ -1,0 +1,38 @@
+# Watches the public Sigstore transparency log for every signature made by the
+# policy-publishing identity, and checks that the log itself stays append-only.
+# Each entry found must correspond to a commit on the `signed` branch of
+# AdverserialAI/confidential-policy; one that does not is a policy that was
+# signed and possibly shown to someone without being published.
+#
+# The monitor matches hashedrekord entries, which is what `cosign sign-blob`
+# writes, and only looks forward from the checkpoint of its first run: enable it
+# before the first policy is signed.
+#
+# This run lives in the operator's own organization. It is a convenience, not
+# independence: anyone can run the same monitor from their own account with the
+# same configuration, and is encouraged to.
+name: rekor-monitor
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  monitor:
+    if: github.event_name == 'workflow_dispatch' || vars.POLICY_WATCH_ENABLED == 'true'
+    permissions:
+      contents: read
+      issues: write
+    uses: sigstore/rekor-monitor/.github/workflows/reusable_monitoring.yml@bff6ce0e3094b5a9aeea2688e4580469ec92b00a # main, 2026-11-23
+    with:
+      file_issue: true
+      artifact_retention_days: 14
+      config: |
+        monitoredValues:
+          certIdentities:
+            - certSubject: ^https://github\.com/AdverserialAI/confidential-policy/\.github/workflows/.*$
+              issuers:
+                - ^https://token\.actions\.githubusercontent\.com$

@@ -648,6 +648,62 @@ through environment variables (`tests/conftest.py`); they are never stored
 here. Among them: the rc.30 deployment description must be refused by the
 secret scanner and by `tools/prepare_release.py`.
 
+## The client policy and its signature
+
+The verifier in this repository compares the endpoint with
+`deployments/<release>/policy.json`. The operator's own clients (the `ack`
+kit, the chat application) compare it with a different document: the *client
+policy* at <https://verify.adverserial.ai/policies/production.json>. Whoever
+can change that file can change what those clients accept, so it matters how
+it is published.
+
+The client policy is published through
+[`AdverserialAI/confidential-policy`](https://github.com/AdverserialAI/confidential-policy):
+a change is merged there, a GitHub Actions workflow signs the exact file with
+Sigstore keyless signing after a named person approves the run, and the
+signature is recorded in the public Rekor transparency log. There is no
+signing key. A valid signature proves that the file was on `main` of that
+repository and that the signing workflow ran on it; the log makes every such
+signature public. It does not prove the policy is right: the operator can
+still sign a policy for a different deployment, but not without leaving a
+permanent public record under one identity.
+
+Check it yourself; you need [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/):
+
+```sh
+curl -sSO https://verify.adverserial.ai/policies/production.json
+curl -sSO https://verify.adverserial.ai/policies/production.json.sigstore.json
+cosign verify-blob --bundle production.json.sigstore.json \
+  --certificate-identity https://github.com/AdverserialAI/confidential-policy/.github/workflows/sign-policy.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-trigger push production.json
+```
+
+If the second download is a 404, the policy being served is not signed.
+
+This repository watches that from the outside, with two workflows that start
+once the repository variable `POLICY_WATCH_ENABLED=true` is set:
+
+* **`policy-watch`** (every 30 minutes) runs `tools/check_published_policy.py`:
+  the served policy and bundle are byte-identical to the `signed` branch of the
+  policy repository, `cosign` accepts them for that one identity, and the
+  client policy pins the same workload as `deployments/<CURRENT>/policy.json`
+  here. While the current release is pending, the last check reports
+  `INCOMPLETE` instead of passing.
+* **`rekor-monitor`** (hourly) runs Sigstore's
+  [rekor-monitor](https://github.com/sigstore/rekor-monitor): it checks that
+  the transparency log stays append-only and opens an issue for every
+  signature made by a workflow of the policy repository. Each one must
+  correspond to a commit on that repository's `signed` branch. A signature
+  with no such commit is a policy that was signed and not published. The
+  monitor only looks forward from its first run.
+
+A monitor in the operator's own organisation is a convenience, not
+independence. The identity to watch is one regular expression,
+`^https://github\.com/AdverserialAI/confidential-policy/\.github/workflows/.*$`
+with issuer `https://token.actions.githubusercontent.com`; anyone can run the
+same monitor from their own account, and is encouraged to.
+
 ## What is not here yet
 
 As of 2026-11-24:
@@ -673,6 +729,13 @@ As of 2026-11-24:
   running VM as the hosting provider's API reports it, not yet against the
   live v0.1.0-rc.33 endpoint. Until that has happened, treat this repository
   as a description of what is deployed, not as evidence that it was verified.
+* **A signed client policy.** The signing pipeline described under
+  [The client policy and its signature](#the-client-policy-and-its-signature)
+  was set up on 2026-11-24. Until the site serves
+  `production.json.sigstore.json`, the `cosign` command above fails at the
+  second download and `policy-watch` reports `FAIL`; both workflows stay
+  disabled until then. The policy currently served is still the one for
+  `v0.1.0-rc.30` and does not describe the release in `deployments/CURRENT`.
 * **GPU attestation by the OS.** Switched off in the measured manifest, see
   [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). Turning it on
   needs a change in the hosting provider's OS and will be a new release here.
