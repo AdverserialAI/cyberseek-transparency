@@ -1,0 +1,58 @@
+# Watches the client policy that verify.adverserial.ai serves: it must be the
+# file signed in AdverserialAI/confidential-policy, with a bundle that verifies
+# for the publishing workflow, and it must pin the deployment recorded here.
+# A failure is a red run and an issue: either the site and the signed branch
+# have diverged, or something was published that this repository does not know.
+name: policy-watch
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: policy-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    if: github.event_name == 'workflow_dispatch' || vars.POLICY_WATCH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: "v3.1.4"
+
+      - name: Check the served policy
+        id: check
+        run: |
+          set +e
+          python3 tools/check_published_policy.py | tee policy-watch.txt
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Open or update an issue on failure
+        if: steps.check.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          { echo "The served client policy failed the watch."; echo; echo "Run: $RUN_URL"; echo; echo '```'; tr -d '`@' < policy-watch.txt; echo '```'; } > issue.md
+          gh label create policy-watch --color B60205 --description "The served client policy failed a check" 2>/dev/null || true
+          existing=$(gh issue list --label policy-watch --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then gh issue comment "$existing" --body-file issue.md; else gh issue create --title "Policy watch failed" --label policy-watch --body-file issue.md; fi
+
+      - name: Fail the run
+        if: steps.check.outputs.exit_code != '0'
+        run: exit 1
