@@ -1,0 +1,9 @@
+v0.1.0-rc.33
+# Status: ROLLED OUT, NOT YET VERIFIED LIVE
+# The policy of this release is pending: measurements, TLS pin and receipt key pending first live attestation.
+# Rolled out on 2026-11-24. The service is not answering yet: after the
+# hosting provider's KMS and OS image migration that day, one of the eight
+# GPUs fails to initialise and the provider is working on it. No attestation
+# of this release has been observed, so the values listed under
+# pending.missing are left out of policy.json instead of guessed. Every value
+# that is in policy.json is final.

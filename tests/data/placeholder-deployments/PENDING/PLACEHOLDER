@@ -1,0 +1,11 @@
+This directory is a PLACEHOLDER. Nothing in it describes a real deployment.
+
+It exists so the layout, the tools and the workflows can be reviewed before the
+first release is published. While this file exists:
+  * tools/validate_deployments.py reports the directory as "placeholder";
+  * history/record.py verifies without a policy, so every run is INCOMPLETE and
+    "matches no release" - the scheduled workflow stays disabled until then.
+
+To publish the first release, follow deployments/README.md ("Publishing a
+release"): tools/prepare_release.py with --retire-placeholder writes the real
+release directory, removes this one, and updates CURRENT and CHANGELOG.md.

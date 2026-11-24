@@ -1,0 +1,132 @@
+# Scheduled recorder: fetch a fresh attestation, verify it, append it to the
+# hash-chained history, commit, and have the new head timestamped by Sigstore.
+#
+# Every run appends exactly one line to the history, whatever happened,
+# including "the endpoint was unreachable".
+#
+# Red run + issue: verification failed or was incomplete, the measurements
+# match no release under deployments/, or the recorder itself broke.
+# Warning + issue, run stays green: the endpoint is unreachable, or it answers
+# but the current release's policy is still pending. Those states can last for
+# days; they are reported in a single issue that is rewritten in place, not in
+# a new issue or comment every 30 minutes, and that issue closes itself when
+# the state ends.
+#
+# Safe to enable before the service answers: set the repository variable
+# RECORDER_ENABLED to "true". While the endpoint is down the history fills with
+# UNREACHABLE lines; once it answers and the pending policy has been completed
+# (deployments/README.md) the same job records PASS with no further change.
+name: attest
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"   # every 30 minutes, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Endpoint base URL"
+        default: "https://api.adverserial.ai"
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: attestation-history   # one writer at a time; never cancel a run mid-commit
+  cancel-in-progress: false
+
+jobs:
+  record:
+    # Scheduled runs start only once the repository variable RECORDER_ENABLED
+    # is "true". Manual runs (workflow_dispatch) always work.
+    if: github.event_name == 'workflow_dispatch' || vars.RECORDER_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write        # commit the new history line and evidence
+      id-token: write        # Sigstore keyless signing
+      attestations: write    # store the attestation with the repository
+      issues: write          # open, update and close the single status issue
+    env:
+      ENDPOINT: ${{ inputs.endpoint || 'https://api.adverserial.ai' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 2
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the verifier (hash-locked)
+        run: python -m pip install --require-hashes -r verify/requirements.txt
+
+      - name: Validate deployments and existing history before touching anything
+        run: |
+          python tools/check_no_secrets.py deployments
+          python tools/validate_deployments.py
+          python history/check_chain.py
+
+      - name: Record one attestation
+        id: record
+        run: |
+          set +e
+          python history/record.py --endpoint "$ENDPOINT" --github-output "$GITHUB_OUTPUT" | tee record.json
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "recorder exit code: $code"
+          # 3 = the chain on disk is broken; no exit_code output = the recorder crashed.
+          # In both cases nothing was appended: stop here (the issue step still runs).
+          if [ "$code" = "3" ] || ! grep -q '^exit_code=' "$GITHUB_OUTPUT"; then exit 1; fi
+
+      - name: Re-check the chain, the append-only property and scan what will be committed
+        run: |
+          python history/check_chain.py --append-only-since HEAD
+          python tools/check_no_secrets.py --profile evidence history
+
+      - name: Commit and push
+        env:
+          SEQ: ${{ steps.record.outputs.seq }}
+          VERDICT: ${{ steps.record.outputs.verdict }}
+          HEAD_HASH: ${{ steps.record.outputs.head }}
+        run: |
+          git config user.name "attestation-recorder[bot]"
+          git config user.email "attestation-recorder[bot]@users.noreply.github.com"
+          git add history
+          git commit -m "history: seq $SEQ $VERDICT" -m "head $HEAD_HASH"
+          # Only this job writes history/, so replaying the commit on top of an
+          # unrelated merge to main is always safe.
+          git pull --rebase origin main
+          python history/check_chain.py
+          git push origin HEAD:main
+
+      - name: Sigstore-attest the history head and the new evidence
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            history/attestations.jsonl
+            ${{ steps.record.outputs.evidence_dir && format('{0}/*', steps.record.outputs.evidence_dir) || 'history/attestations.jsonl' }}
+
+      # One issue at most, rewritten in place while the condition lasts; closed
+      # again when an outage or a pending policy ends. See tools/recorder_issue.py.
+      - name: Report the outcome in one issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # A later step failing after a good recording is a workflow error, not a pass.
+          CODE: ${{ (job.status != 'success' && steps.record.outputs.exit_code == '0') && 'workflow' || steps.record.outputs.exit_code }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python tools/recorder_issue.py --code "$CODE" --record record.json --run-url "$RUN_URL"
+
+      - name: Fail the run unless the outcome is a pass or an expected waiting state
+        if: always() && steps.record.outputs.exit_code != '0'
+        env:
+          CODE: ${{ steps.record.outputs.exit_code }}
+          VERDICT: ${{ steps.record.outputs.verdict }}
+        run: |
+          case "$CODE" in
+            5) echo "::warning::endpoint unreachable; recorded as UNREACHABLE in the history and reported in the open issue" ;;
+            6) echo "::warning::the endpoint answers, but the policy of the current release is still pending (verdict $VERDICT)" ;;
+            *) echo "::error::recorder exit code ${CODE:-none} (verdict $VERDICT)"; exit 1 ;;
+          esac

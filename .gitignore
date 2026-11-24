@@ -1,0 +1,16 @@
+# Private fixtures and anything derived from them never enter this repository.
+tests/fixtures.local.json
+*.local.json
+cvm*.json
+sample-attestation*.json
+.env
+*.env
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+# Recorder scratch output in CI
+record.json
+issue.md

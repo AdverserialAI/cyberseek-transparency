@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "status": "pending",
+  "pending": {
+    "reason": "measurements, TLS pin and receipt key pending first live attestation",
+    "missing": [
+      "tdx.mrtd",
+      "tdx.rtmr0",
+      "tdx.rtmr1",
+      "tdx.rtmr2",
+      "tls_spki_sha256",
+      "receipt_keys",
+      "model_artifact_digest"
+    ],
+    "since": "2026-11-24",
+    "detail": "Rolled out on 2026-11-24. The service is not answering yet: after the hosting provider's KMS and OS image migration that day, one of the eight GPUs fails to initialise and the provider is working on it. No attestation of this release has been observed, so the values listed under pending.missing are left out of policy.json instead of guessed. Every value that is in policy.json is final."
+  },
+  "policy_id": "adverserial-policy/cyberseek",
+  "model_id": "adverserial/cyberseek",
+  "proxy_version": "v0.1.0-rc.33",
+  "deployment_configuration_digest": "sha256:96ba75d8d59d93069da02661e2e6078f82b4cd7d2745a5b8b528057809831da4",
+  "runtime_image_digest": "sha256:b4f09a2ccbcfcc262d49600c3cd7f8581a793ea7d104947257b6a95500953b90",
+  "proxy_image_digest": "sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b",
+  "allowed_runtime": {
+    "tee": [
+      "intel-tdx"
+    ],
+    "gpu_attestation": [
+      "nvidia-cc"
+    ],
+    "minimum_gpu_count": 8
+  },
+  "tdx": {
+    "app_id": "b74e3dde6292cc69bac759b22fc723a299aa8a83",
+    "compose_hash": "275c6e538a381def20642459b5f5b37f5684d50b877604ee593c449ae51b1a1d",
+    "os_image_hash": "3bb7d262416f47db06855d7b7cf7d380538747206014b3c0adcddfef9b7c4ef2"
+  },
+  "freshness": {
+    "attestation_receipt_ttl_seconds": 300,
+    "gpu_evidence_max_age_seconds": 1800
+  },
+  "verifier": {
+    "accepted_tcb_status": [
+      "UpToDate"
+    ],
+    "allowed_envs": [
+      "HF_TOKEN",
+      "CLOUDFLARE_API_TOKEN",
+      "NV_ATTESTATION_SERVICE_KEY",
+      "METER_INGRESS_SHARED_SECRET"
+    ],
+    "proxy_service": "attest-proxy",
+    "inference_service": "sglang",
+    "enclave_key_proxy_digests": [
+      "sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b"
+    ]
+  }
+}

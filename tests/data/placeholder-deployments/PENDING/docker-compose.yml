@@ -1,0 +1,11 @@
+# PLACEHOLDER - not a real deployment. See ./PLACEHOLDER.
+#
+# After the migration this file is replaced by the exact docker compose text
+# that runs inside the confidential VM, byte for byte. Requirements:
+#   * identical to "docker_compose_file" inside app-compose.json;
+#   * every image pinned as name@sha256:<digest>;
+#   * exactly one line "COMPOSE_DIGEST: sha256:<hex>" that recomputes
+#     (see verify/avlib/compose.py);
+#   * no literal secret values. Secrets appear only as ${NAME} references to
+#     encrypted environment variables listed in app-compose.json "allowed_envs".
+services: {}

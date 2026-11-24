@@ -1,0 +1,89 @@
+# Validates every change to deployments/ and, once merged to main, publishes a
+# Sigstore attestation for each deployment file so that third parties can prove
+# which compose and policy this repository published, and when.
+name: deployments
+
+on:
+  pull_request:
+    paths:
+      - "deployments/**"
+      - "tools/**"
+      - "verify/**"
+      - "history/**"
+      - "tests/**"
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - "deployments/**"
+
+permissions: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the verifier (hash-locked) and the test runner
+        run: |
+          python -m pip install --require-hashes -r verify/requirements.txt
+          python -m pip install --require-hashes -r tests/requirements.txt
+
+      - name: No credentials anywhere under deployments/
+        run: python tools/check_no_secrets.py deployments
+
+      - name: No credential-shaped literal anywhere else in the repository
+        run: python tools/check_no_secrets.py --profile source .
+
+      - name: Deployment files are consistent
+        run: python tools/validate_deployments.py
+
+      - name: Published releases are immutable
+        if: github.event_name == 'pull_request'
+        # The one permitted change to a published file is completing a policy.json
+        # that was published as pending: values may be added, none may change.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/validate_deployments.py --immutable-since "origin/$BASE_REF"
+
+      - name: History is intact and append-only
+        run: |
+          python history/check_chain.py
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python history/check_chain.py --append-only-since "origin/${{ github.base_ref }}"
+          fi
+
+      - name: Unit tests
+        run: python -m pytest -q tests
+
+  attest:
+    needs: validate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Sigstore-attest every deployment file
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            deployments/CURRENT
+            deployments/CHANGELOG.md
+            deployments/*/policy.json
+            deployments/*/app-compose.json
+            deployments/*/docker-compose.yml

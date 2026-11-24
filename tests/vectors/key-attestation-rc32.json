@@ -1,0 +1,38 @@
+{
+  "ehbp_public_key": "7oEOGhmItUaiHAE1SB2r4yvYmF11cKSeSZ9WMWdvwBw",
+  "key_attestation": {
+    "event_log": "dev-mode-synthetic-event-log",
+    "quote": "444556515445303032ed2f5c47da6a70bb73fed7aadf8e53144f663e10ec78697b24080ea477b19f68538de76c8ce61be6741c61c63253394b37006cc97854ef57d2d8552485f13b79c391dc47112f503180c7c0030ca996",
+    "statement": "{\"ehbp_public_key\":\"7oEOGhmItUaiHAE1SB2r4yvYmF11cKSeSZ9WMWdvwBw\",\"ehbp_public_key_sha256\":\"sha256:MwVf1qv963CiaA22e00lBPMiTyz1AMnR4smO03kucN4\",\"issued_at\":\"2025-10-09T08:36:40Z\",\"keys_origin\":\"enclave-generated\",\"meter_pubkey_jwk\":{\"alg\":\"EdDSA\",\"crv\":\"Ed25519\",\"kid\":\"TzRGAqIOuSE_o4_D9-jh9dNva7gPoqYVQnoIv1p1P_I\",\"kty\":\"OKP\",\"use\":\"sig\",\"x\":\"_yTWm3pTFR_9jfXvEmaIwveOTsgTa_k3oAhtjf9TtyA\"},\"proxy_version\":\"v0.1.0-rc.32\",\"receipt_pubkey_jwk\":{\"crv\":\"P-256\",\"kid\":\"ul2jyZGrw-s_0QyCD6PXfQce0pvjqj8BQXK76RHTXms\",\"kty\":\"EC\",\"x\":\"fFw2JhZoc6e7B1woVN7pjXgTEnfgUG3sqt4vqpBo3Tg\",\"y\":\"nEBG1fw5qHhR1R5Hxg7TMPSItusZCWiEATK9b1i-ozg\"},\"tls_spki_sha256\":\"sha256:OZXWo3za4allcFG0J_GavpfwbiLKx5qL0430fwZVqsI\",\"type\":\"adverserial-key-attestation/v1\"}"
+  },
+  "meter_jwks": {
+    "keys": [
+      {
+        "alg": "EdDSA",
+        "crv": "Ed25519",
+        "kid": "TzRGAqIOuSE_o4_D9-jh9dNva7gPoqYVQnoIv1p1P_I",
+        "kty": "OKP",
+        "use": "sig",
+        "x": "_yTWm3pTFR_9jfXvEmaIwveOTsgTa_k3oAhtjf9TtyA"
+      }
+    ]
+  },
+  "meter_thumbprint": "uzkqonY6nHSug-RG6Z1k2Me2wQRreB769rljFlk16k4",
+  "receipt_kid": "ul2jyZGrw-s_0QyCD6PXfQce0pvjqj8BQXK76RHTXms",
+  "receipt_spki_der": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfFw2JhZoc6e7B1woVN7pjXgTEnfgUG3sqt4vqpBo3TicQEbV_DmoeFHVHkfGDtMw9Ii26xkJaIQBMr1vWL6jOA",
+  "source": "attest-proxy v0.1.0-rc.32 internal/server, handlers run in a Go test with the development quote source",
+  "statusz": {
+    "ehbp_public_key_sha256": "sha256:MwVf1qv963CiaA22e00lBPMiTyz1AMnR4smO03kucN4",
+    "ingress": {
+      "in_use": 0,
+      "max": 48
+    },
+    "keys_origin": "enclave-generated",
+    "meter_jwk_thumbprint": "uzkqonY6nHSug-RG6Z1k2Me2wQRreB769rljFlk16k4",
+    "meter_kid": "TzRGAqIOuSE_o4_D9-jh9dNva7gPoqYVQnoIv1p1P_I",
+    "receipt_kid": "ul2jyZGrw-s_0QyCD6PXfQce0pvjqj8BQXK76RHTXms",
+    "upstream_ready": false,
+    "version": "v0.1.0-rc.32"
+  },
+  "tls_spki_sha256": "sha256:OZXWo3za4allcFG0J_GavpfwbiLKx5qL0430fwZVqsI"
+}

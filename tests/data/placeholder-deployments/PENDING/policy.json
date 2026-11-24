@@ -1,0 +1,48 @@
+{
+  "PLACEHOLDER": "Not a real deployment. Every value below is a placeholder to be replaced after the migration.",
+  "version": 2,
+  "status": "placeholder",
+  "policy_id": "adverserial-policy/cyberseek",
+  "model_id": "adverserial/cyberseek",
+  "proxy_version": "<release tag, e.g. v0.1.0-rc.NN>",
+  "release_manifest": "<URL of the release manifest on the policy site>",
+  "deployment_configuration_digest": "<sha256:... the COMPOSE_DIGEST value>",
+  "runtime_image_digest": "<sha256:... inference server image>",
+  "proxy_image_digest": "<sha256:... attest-proxy image>",
+  "model_artifact_digest": "<sha256:... model manifest digest>",
+  "allowed_runtime": {
+    "tee": [
+      "intel-tdx"
+    ],
+    "gpu_attestation": [
+      "nvidia-cc"
+    ],
+    "minimum_gpu_count": 8
+  },
+  "tdx": {
+    "mrtd": "<96 hex>",
+    "rtmr0": "<96 hex>",
+    "rtmr1": "<96 hex>",
+    "rtmr2": "<96 hex>",
+    "app_id": "b74e3dde6292cc69bac759b22fc723a299aa8a83",
+    "compose_hash": "<64 hex = sha256 of app-compose.json>",
+    "os_image_hash": "<64 hex>"
+  },
+  "freshness": {
+    "attestation_receipt_ttl_seconds": 300,
+    "gpu_evidence_max_age_seconds": 1800
+  },
+  "verifier": {
+    "accepted_tcb_status": [
+      "UpToDate"
+    ],
+    "allowed_envs": [
+      "<names of the operator-supplied encrypted variables>"
+    ],
+    "proxy_service": "attest-proxy",
+    "inference_service": "sglang",
+    "enclave_key_proxy_digests": [
+      "<sha256:... attest-proxy image digests verified with gh attestation verify>"
+    ]
+  }
+}
