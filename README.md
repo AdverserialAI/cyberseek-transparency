@@ -1,34 +1,44 @@
 # Verify the Adverserial confidential inference deployment
 
-> **Status on 2026-11-24: rolled out on a new OS image, not yet verified live.**
+> **Status on 2026-11-24: live, and verified by this repository since 19:19 UTC.**
 >
 > * **Running:** `attest-proxy` v0.1.0-rc.33, the first deployed release that
 >   generates its keys inside the VM, on the OS image `dstack-0.6.5`. Its
->   compose, measured manifest, compose hash, OS image hash and image digests
->   are final and published in
+>   compose, measured manifest and completed policy are in
 >   [`deployments/v0.1.0-rc.33-os-0.6.5/`](deployments/v0.1.0-rc.33-os-0.6.5/).
-> * **What changed today:** the first rollout of rc.33, on
->   `dstack-nvidia-0.5.15`, never served a request: one of the eight GPUs
->   failed to initialise at every boot. At about 14:00 UTC the hosting
->   provider moved the VM to `dstack-0.6.5`. That changed the OS image hash
->   and the compose hash, so the directory published this morning,
->   [`deployments/v0.1.0-rc.33/`](deployments/v0.1.0-rc.33/), is kept as
->   published and marked *superseded before it ever served*. The docker
->   compose text is byte-identical in both.
+>   The proxy reports that it has been up since 18:28 UTC and that the model
+>   was ready at 18:42 UTC.
+> * **Verified live.** The verifier here first ran against the live endpoint
+>   at 19:13 UTC, against the policy that was still pending: `INCOMPLETE` as
+>   designed, nothing failed. The measurements from that quote were compared
+>   with the OS vendor's release page and measurement tool, the policy was
+>   completed, and at 19:19 UTC the verifier printed `VERDICT: PASS`: 41
+>   checks passed, none failed, none skipped, one warning (next point).
+>   [`deployments/CHANGELOG.md`](deployments/CHANGELOG.md) says exactly what
+>   was compared with what, and where that comparison has a limit.
 > * **GPU attestation by the OS is switched off.** The provider added
 >   `"attest_gpu": false` to the measured manifest, because the check in
 >   `dstack-0.6.5` cannot handle this eight-GPU machine. Nothing in the
->   measured boot chain currently verifies the GPUs' protected mode. The
->   verifier says so on every run (`[WARN] gpu.os_attestation`). See
+>   measured boot chain currently verifies the GPUs' protected mode, and a
+>   `PASS` does not cover it. The verifier says so on every run
+>   (`[WARN] gpu.os_attestation`). See
 >   [GPU evidence](#gpu-evidence-what-is-and-is-not-verified).
-> * **Service:** the proxy came up on the new image at 14:47 UTC and the model
->   was ready at 15:01 UTC. The VM was restarted once more at 15:39 UTC to
->   replace one sealed variable; the configuration did not change.
-> * **First verified history entry: pending.** This repository has not yet
->   verified the live endpoint. The `policy.json` of the current release is
->   therefore marked `pending` and holds no measurements, TLS pin or receipt
->   key yet. Until it is completed the verifier answers `INCOMPLETE` at best,
->   never `PASS`, and nothing here claims the live service has been verified.
+> * **The history has started.** Entry `seq 0` was recorded at 19:22:37 UTC
+>   (`PASS`), by hand. From `seq 1` (19:25:57 UTC, `PASS`) the scheduled
+>   workflow records every 30 minutes and has each new head attested through
+>   Sigstore. The history is a few entries long: it shows that the service
+>   verified at those moments, not a track record.
+> * **The client policy is signed.** The policy the operator's own clients
+>   use has been served with a Sigstore signature since about 19:03 UTC
+>   (Rekor log index 4085227850) and pins the same measurements as this
+>   repository. Both watch workflows run since 19:25 UTC.
+> * **Earlier the same day:** the first rollout of rc.33, on
+>   `dstack-nvidia-0.5.15`, never served a request (one of the eight GPUs
+>   failed to initialise at every boot). The hosting provider moved the VM to
+>   `dstack-0.6.5` at about 14:00 UTC, which changed the OS image hash and the
+>   compose hash. The directory published that morning,
+>   [`deployments/v0.1.0-rc.33/`](deployments/v0.1.0-rc.33/), is kept as
+>   published and marked *superseded before it ever served*.
 >
 > See [What is not here yet](#what-is-not-here-yet).
 
@@ -65,12 +75,8 @@ python3 -m pip install --require-hashes -r verify/requirements.txt
 python3 verify/verify.py https://api.adverserial.ai --deployment "deployments/$(head -n 1 deployments/CURRENT)"
 ```
 
-Today the third command prints `VERDICT: INCOMPLETE` with the reason on the
-first line, `policy.not_pending`, because the policy of the current release is
-still pending (see the status at the top). While the VM is restarting it ends
-with a connection error and a note that the policy is pending.
-
-Against a completed policy you get one line per check and a verdict:
+The third command prints one line per check and a verdict. While the VM is
+restarting it ends with a connection error instead (exit status 3).
 
 ```
 [PASS] tdx.quote_signature   Quote is signed by a key certified up to Intel's root CA
@@ -148,7 +154,13 @@ that chain to Intel, by hashes you can recompute, and by nothing else.
    (RTMR0-2). They must equal the values in `policy.json`. The OS image hash
    recorded at boot must equal the published one. For `dstack-0.6.5` that
    hash can be recomputed from the public image, see
-   [What you still have to trust](#what-you-still-have-to-trust).
+   [What you still have to trust](#what-you-still-have-to-trust). The
+   expected values in `policy.json` were not simply copied from the endpoint:
+   before they were written down they were compared with what the OS vendor
+   publishes and with what its `dstack-mr` tool computes from the public
+   image. `deployments/CHANGELOG.md` records that comparison and its limit
+   (the VM configuration that RTMR0 depends on is not published by the
+   hosting provider; part of it was inferred).
 
 3. **It runs exactly the published configuration.** Before starting any
    container, the OS records the SHA-256 of the application manifest
@@ -681,8 +693,9 @@ cosign verify-blob --bundle production.json.sigstore.json \
 
 If the second download is a 404, the policy being served is not signed.
 
-This repository watches that from the outside, with two workflows that start
-once the repository variable `POLICY_WATCH_ENABLED=true` is set:
+This repository watches that from the outside, with two workflows. They are
+switched on by the repository variable `POLICY_WATCH_ENABLED=true`, which has
+been set since 2026-11-24 19:25 UTC:
 
 * **`policy-watch`** (every 30 minutes) runs `tools/check_published_policy.py`:
   the served policy and bundle are byte-identical to the `signed` branch of the
@@ -696,7 +709,9 @@ once the repository variable `POLICY_WATCH_ENABLED=true` is set:
   signature made by a workflow of the policy repository. Each one must
   correspond to a commit on that repository's `signed` branch. A signature
   with no such commit is a policy that was signed and not published. The
-  monitor only looks forward from its first run.
+  monitor only looks forward from its first run, which was at 19:25 UTC on
+  2026-11-24: the signature made at 19:03 UTC that day is older and is
+  covered by `policy-watch` and the `cosign` command above, not by an issue.
 
 A monitor in the operator's own organisation is a convenience, not
 independence. The identity to watch is one regular expression,
@@ -706,43 +721,41 @@ same monitor from their own account, and is encouraged to.
 
 ## What is not here yet
 
-As of 2026-11-24:
+As of 2026-11-24, 19:40 UTC (the evening of the first verified run):
 
-* **Measurements, TLS pin and receipt key of the current release.**
-  `deployments/v0.1.0-rc.33-os-0.6.5/policy.json` is marked `pending`: it has
-  the app id, the compose hash, the OS image hash, the GPU policy hash, the
-  image digests and the verifier settings, and it leaves out MRTD, RTMR0-2,
-  the TLS key pin, the receipt key and the model manifest digest. Those are
-  taken from a live attestation that this repository has verified, and that
-  has not happened yet. They are added, and the pending mark is removed, in
-  one reviewed change (`deployments/README.md`, "Completing a pending
-  release"). Nothing that is published now may change in that step; CI
-  enforces it.
-* **A verified history entry.** `history/attestations.jsonl` holds no `PASS`
-  line. The recorder, once enabled with the repository variable
-  `RECORDER_ENABLED=true`, appends an honest line every 30 minutes
-  (`UNREACHABLE` while the endpoint is down, `INCOMPLETE` while the policy is
-  pending); it starts recording `PASS` by itself when the policy is
-  completed.
-* **A run against the live endpoint.** The verifier has been run against
-  synthetic data, the proxy's own test output and the event log of the
-  running VM as the hosting provider's API reports it, not yet against the
-  live v0.1.0-rc.33 endpoint. Until that has happened, treat this repository
-  as a description of what is deployed, not as evidence that it was verified.
-* **A signed client policy.** The signing pipeline described under
-  [The client policy and its signature](#the-client-policy-and-its-signature)
-  was set up on 2026-11-24. Until the site serves
-  `production.json.sigstore.json`, the `cosign` command above fails at the
-  second download and `policy-watch` reports `FAIL`; both workflows stay
-  disabled until then. The policy currently served is still the one for
-  `v0.1.0-rc.30` and does not describe the release in `deployments/CURRENT`.
+* **A track record.** The history starts on 2026-11-24 at 19:22 UTC and is a
+  few entries long. It proves that the endpoint verified at those moments.
+  It says nothing about earlier releases (see "The past" above), and a claim
+  such as "continuously verified" only becomes checkable as the file grows.
+  Count the lines and read the timestamps before relying on it:
+  `wc -l history/attestations.jsonl`.
 * **GPU attestation by the OS.** Switched off in the measured manifest, see
-  [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). Turning it on
-  needs a change in the hosting provider's OS and will be a new release here.
+  [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). Every `PASS`
+  here carries the warning `gpu.os_attestation`. Turning it on needs a
+  change in the hosting provider's OS and will be a new release here.
+* **GPU evidence bound to the VM.** NVIDIA's tokens are checked, but they are
+  not bound to the TDX quote or to your nonce (`[N/A ] gpu.bound_to_vm`).
+* **A published VM configuration.** RTMR0 depends on the virtual machine's
+  shape. The hosting provider does not publish it and the attestation does
+  not carry it, so the comparison of RTMR0 with the vendor's tool rests in
+  part on inferred inputs (`deployments/CHANGELOG.md`).
+* **A rebuilt or audited OS image, model server or proxy.** Hashes and build
+  provenance are checked; nobody here has rebuilt the OS image or the model
+  server from source, and the proxy build is not reproducible.
+* **An independent recorder.** The history and both watch workflows run in a
+  repository the operator controls. Nobody outside the operator has
+  reported running the verifier or the log monitor yet.
+* **A Sigstore attestation of entry `seq 0` alone.** It was recorded by hand,
+  before the workflow was switched on. The first attested state of the
+  history file is the one with `seq 0` and `seq 1` (19:26 UTC); it covers
+  both lines.
+* **A transparency-log watch of the first policy signature.** `rekor-monitor`
+  looks forward from its first run (19:25 UTC); the signature of 19:03 UTC
+  predates it.
 * **`deployments/v0.1.0-rc.33/` will never be completed.** It describes the
   configuration on `dstack-nvidia-0.5.15`, which never served. It stays as
-  published, with its pending policy, so that what was announced this morning
-  remains on record; `deployments/CHANGELOG.md` marks it superseded.
+  published, with its pending policy, so that what was announced that
+  morning remains on record; `deployments/CHANGELOG.md` marks it superseded.
 
 ## Licence
 
