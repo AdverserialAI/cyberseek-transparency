@@ -38,7 +38,11 @@ Profiles
              holding 40 or more unbroken base64 or hex characters. For program
              text, tests, workflows and documentation, where `key = load(...)`
              is ordinary code. Directories named .git, __pycache__,
-             .pytest_cache, .venv and venv are skipped.
+             .pytest_cache, .venv and venv are skipped. Files under
+             history/evidence/ are recorded attestation evidence, not program
+             text: a scan of the whole repository applies the evidence
+             profile to them (they are full of signed NVIDIA tokens, Intel
+             signatures and public key configurations).
 
 JSON files are parsed and every string inside them is scanned as text too, so
 a docker compose embedded in app-compose.json is covered.
@@ -71,6 +75,13 @@ def scan_file(path: Path, profile: str = "strict") -> list[str]:
     return scan_document(str(path), text, path.suffix == ".json", profile)
 
 
+def profile_for(path: Path, profile: str) -> str:
+    """The profile to apply to one file: recorded evidence is evidence, wherever the scan started."""
+    parts = path.resolve().parts
+    recorded = any(parts[i:i + 2] == ("history", "evidence") for i in range(len(parts) - 1))
+    return "evidence" if profile == "source" and recorded else profile
+
+
 def iter_files(targets):
     for target in targets:
         p = Path(target)
@@ -94,7 +105,7 @@ def main(argv=None) -> int:
     except FileNotFoundError as exc:
         print("error: no such path: %s" % exc, file=sys.stderr)
         return 2
-    findings = [line for f in files for line in scan_file(f, args.profile)]
+    findings = [line for f in files for line in scan_file(f, profile_for(f, args.profile))]
     for line in findings:
         print(line)
     print("%s: scanned %d files, %d findings" % ("FAIL" if findings else "OK", len(files), len(findings)))
