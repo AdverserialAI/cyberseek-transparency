@@ -80,3 +80,30 @@ def test_compose_self_digest_and_images():
     assert compose.sealed_references(compose.load(text)) == set(synth.SEALED)
     with pytest.raises(ValueError):
         compose.self_digest("services: {}\n")
+
+
+def test_collateral_fetch_calls_the_library_inside_a_running_event_loop(monkeypatch):
+    """dcap-qvl's native get_collateral needs a running loop when it is called.
+
+    Found on the first run against the live endpoint: calling it first and
+    passing the result to asyncio.run() raised "no running event loop", so
+    tdx.collateral_tcb and keyatt.quote were skipped on every live run.
+    """
+    import asyncio
+
+    from avlib import dcap
+
+    class Collateral:
+        def to_json(self):
+            return '{"ok":true}'
+
+    class Lib:
+        @staticmethod
+        def get_collateral(url, raw):
+            loop = asyncio.get_running_loop()  # raises RuntimeError outside a loop, like the real one
+            future = loop.create_future()
+            loop.call_soon(future.set_result, Collateral())
+            return future
+
+    monkeypatch.setattr(dcap, "_lib", lambda: Lib)
+    assert dcap.fetch_collateral(b"quote", "https://pccs.invalid") == '{"ok":true}'
