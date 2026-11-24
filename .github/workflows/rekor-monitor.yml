@@ -15,7 +15,7 @@ name: rekor-monitor
 
 on:
   schedule:
-    - cron: "23 * * * *"
+    - cron: "27 * * * *"
   workflow_dispatch:
 
 permissions: {}
