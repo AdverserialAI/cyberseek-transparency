@@ -24,14 +24,19 @@
 >   (`[WARN] gpu.os_attestation`). See
 >   [GPU evidence](#gpu-evidence-what-is-and-is-not-verified).
 > * **The history has started.** Entry `seq 0` was recorded at 19:22:37 UTC
->   (`PASS`), by hand. From `seq 1` (19:25:57 UTC, `PASS`) the scheduled
->   workflow records every 30 minutes and has each new head attested through
->   Sigstore. The history is a few entries long: it shows that the service
->   verified at those moments, not a track record.
+>   (`PASS`), by hand. `seq 1` (19:25:57 UTC, `PASS`) was recorded by the
+>   recorder workflow, started by hand, and its head is attested through
+>   Sigstore. The workflow's 30-minute schedule was switched on at 19:25 UTC.
+>   **No run started by the schedule itself had happened by 20:00 UTC**; until
+>   one has, "recorded every 30 minutes" describes the configuration, not an
+>   observation. Read the timestamps in `history/attestations.jsonl`. The
+>   history is a few entries long: it shows that the service verified at
+>   those moments, not a track record.
 > * **The client policy is signed.** The policy the operator's own clients
 >   use has been served with a Sigstore signature since about 19:03 UTC
 >   (Rekor log index 4085227850) and pins the same measurements as this
->   repository. Both watch workflows run since 19:25 UTC.
+>   repository. Both watch workflows passed when started by hand at 19:25
+>   UTC and are scheduled from then on (same caveat as above).
 > * **Earlier the same day:** the first rollout of rc.33, on
 >   `dstack-nvidia-0.5.15`, never served a request (one of the eight GPUs
 >   failed to initialise at every boot). The hosting provider moved the VM to
@@ -721,7 +726,7 @@ same monitor from their own account, and is encouraged to.
 
 ## What is not here yet
 
-As of 2026-11-24, 19:40 UTC (the evening of the first verified run):
+As of 2026-11-24, 20:00 UTC (the evening of the first verified run):
 
 * **A track record.** The history starts on 2026-11-24 at 19:22 UTC and is a
   few entries long. It proves that the endpoint verified at those moments.
@@ -729,6 +734,11 @@ As of 2026-11-24, 19:40 UTC (the evening of the first verified run):
   such as "continuously verified" only becomes checkable as the file grows.
   Count the lines and read the timestamps before relying on it:
   `wc -l history/attestations.jsonl`.
+* **A run started by the schedule.** The recorder and the two watch
+  workflows have each passed once, started by hand, on 2026-11-24 at 19:25
+  UTC. Their schedules were enabled at the same time, and by 20:00 UTC
+  GitHub had not started one on its own. Until the history shows entries
+  about 30 minutes apart, do not assume it is being extended.
 * **GPU attestation by the OS.** Switched off in the measured manifest, see
   [GPU evidence](#gpu-evidence-what-is-and-is-not-verified). Every `PASS`
   here carries the warning `gpu.os_attestation`. Turning it on needs a
