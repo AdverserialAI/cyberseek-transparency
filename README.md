@@ -26,17 +26,21 @@
 > * **The history has started.** Entry `seq 0` was recorded at 19:22:37 UTC
 >   (`PASS`), by hand. `seq 1` (19:25:57 UTC, `PASS`) was recorded by the
 >   recorder workflow, started by hand, and its head is attested through
->   Sigstore. The workflow's 30-minute schedule was switched on at 19:25 UTC.
->   **No run started by the schedule itself had happened by 20:00 UTC**; until
->   one has, "recorded every 30 minutes" describes the configuration, not an
->   observation. Read the timestamps in `history/attestations.jsonl`. The
->   history is a few entries long: it shows that the service verified at
->   those moments, not a track record.
+>   Sigstore. GitHub's own scheduler then started the recorder only once in
+>   its first ten hours (03:44 UTC on 25 November), so the early history has
+>   gaps of several hours. **Since 25 November 2026, 06:39 UTC, an external
+>   timer (Google Cloud Scheduler) starts the recorder at minutes 9 and 39 of
+>   every hour.** A 30-minute cadence therefore exists only from that moment.
+>   Read the timestamps in `history/attestations.jsonl`: the history shows
+>   that the service verified at those moments, not a long track record.
 > * **The client policy is signed.** The policy the operator's own clients
 >   use has been served with a Sigstore signature since about 19:03 UTC
 >   (Rekor log index 4085227850) and pins the same measurements as this
 >   repository. Both watch workflows passed when started by hand at 19:25
->   UTC and are scheduled from then on (same caveat as above).
+>   UTC and are started by the same external timer since 25 November. The
+>   transparency-log monitor was reset on 25 November at 06:47 UTC, because it
+>   could not catch up on its backlog; it looks forward only from then and has
+>   not yet shown that it completes every hour.
 > * **Earlier the same day:** the first rollout of rc.33, on
 >   `dstack-nvidia-0.5.15`, never served a request (one of the eight GPUs
 >   failed to initialise at every boot). The hosting provider moved the VM to
