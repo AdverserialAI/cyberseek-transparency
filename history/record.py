@@ -113,7 +113,9 @@ def record(args) -> tuple[dict, int]:
     pending = validate_deployments.load_pending(deployments).get(dep.name) if dep else None
 
     argv = ["--at", stamp]
-    argv += ["--file", args.file] if args.file else [args.endpoint, "--nonce", nonce]
+    # "--nonce=<value>", not two arguments: a base64url nonce may begin with "-", which the
+    # argument parser would otherwise read as an option and refuse (about one run in 64).
+    argv += ["--file", args.file] if args.file else [args.endpoint, "--nonce=" + nonce]
     argv += ["--deployment", str(dep)] if dep else []
     for flag in ("collateral", "nras_jwks", "key_attestation_file", "meter_jwks_file", "statusz_file", "pccs_url"):
         if getattr(args, flag):
