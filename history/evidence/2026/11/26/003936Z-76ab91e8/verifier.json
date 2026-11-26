@@ -1,0 +1,355 @@
+{
+  "checks": [
+    {
+      "detail": "the policy is not marked pending",
+      "id": "policy.not_pending",
+      "status": "PASS",
+      "title": "The policy is final, not waiting for a first live attestation"
+    },
+    {
+      "detail": "TDX quote v4, 5243 bytes; 31 event-log entries",
+      "id": "evidence.format",
+      "status": "PASS",
+      "title": "Evidence is well formed and not development-mode"
+    },
+    {
+      "detail": "PCK chain -> Intel SGX PCK Platform CA -> pinned Intel SGX Root CA (44a0196b2b99f889...)",
+      "id": "tdx.quote_signature",
+      "status": "PASS",
+      "title": "Quote is signed by a key certified up to Intel's root CA"
+    },
+    {
+      "detail": "dcap-qvl: TCB status UpToDate, advisories: none",
+      "id": "tdx.collateral_tcb",
+      "status": "PASS",
+      "title": "Intel collateral: not revoked, platform TCB level acceptable"
+    },
+    {
+      "detail": "td_attributes = 0000001000000000 (debug bit clear)",
+      "id": "tdx.not_debug",
+      "status": "PASS",
+      "title": "The VM is not a debug TD"
+    },
+    {
+      "detail": "evidence echoes the 32-byte random nonce chosen for this run",
+      "id": "binding.nonce",
+      "status": "PASS",
+      "title": "Evidence answers this verifier's fresh random nonce"
+    },
+    {
+      "detail": "issued_at 2026-11-26T00:39:37Z is within 300s of local time",
+      "id": "binding.freshness",
+      "status": "PASS",
+      "title": "Evidence timestamp is current"
+    },
+    {
+      "detail": "report_data = SHA-256(domain || nonce || TLS SPKI || receipt SPKI || EHBP key) || 0^32 matches; EHBP key bound",
+      "id": "binding.report_data",
+      "status": "PASS",
+      "title": "Quote binds the nonce, TLS key, receipt key and HPKE (EHBP) key"
+    },
+    {
+      "detail": "X25519 receiver key sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils",
+      "id": "binding.ehbp_key",
+      "status": "PASS",
+      "title": "An HPKE receiver key for encrypted request bodies is attested"
+    },
+    {
+      "detail": "RTMR0-3 recomputed from 31 events equal the quoted values",
+      "id": "eventlog.replay",
+      "status": "PASS",
+      "title": "Event log replays to the RTMR values in the quote"
+    },
+    {
+      "detail": "app-id, compose-hash, instance-id precede boot-mr-done; os-image-hash, key-provider precede system-ready; also unique and inside the boundary: gpu-policy-hash",
+      "id": "eventlog.boot_order",
+      "status": "PASS",
+      "title": "Launch identity events are unique and inside the boot boundary"
+    },
+    {
+      "detail": "mrtd = 83baf004a06c83f6371d4d9e19c8bb1ead734ba7696e56d6b52271011394a6f24efecc27af3b5c1da41594dbfa706e97",
+      "id": "policy.mrtd",
+      "status": "PASS",
+      "title": "MRTD matches the policy"
+    },
+    {
+      "detail": "rtmr0 = d8f547a53863772b1a8b64f6b9ae70ad98549fbb44628d2f07c8ed6f883ce6288611538b27dac0eb5baa216a4154a8bd",
+      "id": "policy.rtmr0",
+      "status": "PASS",
+      "title": "RTMR0 matches the policy"
+    },
+    {
+      "detail": "rtmr1 = 2f72a4db2f7de90adeabe55607b0c1cf209fc243bc773f5862d1b00d3bb198e835e99d502e90a24005f0d1368dd24f29",
+      "id": "policy.rtmr1",
+      "status": "PASS",
+      "title": "RTMR1 matches the policy"
+    },
+    {
+      "detail": "rtmr2 = 3d9910a33a26a769c5146dea31bea0d2924a7746ad09e121dabe709eddd5c647716f4d89279e0e24d8dbb93f9cdb605b",
+      "id": "policy.rtmr2",
+      "status": "PASS",
+      "title": "RTMR2 matches the policy"
+    },
+    {
+      "detail": "os_image_hash = 4771a29e03e93f0e2d5e37174cd8bb1112942c9689deb36b16c5df9e183d8623",
+      "id": "policy.os_image_hash",
+      "status": "PASS",
+      "title": "os_image_hash matches the policy"
+    },
+    {
+      "detail": "app_id = b74e3dde6292cc69bac759b22fc723a299aa8a83",
+      "id": "policy.app_id",
+      "status": "PASS",
+      "title": "app_id matches the policy"
+    },
+    {
+      "detail": "compose_hash = 9c78bf82dfad3a133838f2ac87406b3fe1c9d875d8a4d5fbe04e9f34d7d3b820",
+      "id": "policy.compose_hash",
+      "status": "PASS",
+      "title": "compose_hash matches the policy"
+    },
+    {
+      "detail": "gpu_policy_hash = 930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d",
+      "id": "policy.gpu_policy_hash",
+      "status": "PASS",
+      "title": "gpu_policy_hash matches the policy"
+    },
+    {
+      "detail": "self-reported (not hardware-measured) fields match: compose_digest, model_digest, proxy_version, policy_id, model_id",
+      "id": "policy.workload",
+      "status": "PASS",
+      "title": "Proxy's self-reported workload fields match the policy"
+    },
+    {
+      "detail": "ES256 receipt by attested key lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ commits to the canonical evidence digest; key is pinned by the policy",
+      "id": "receipt.signature",
+      "status": "PASS",
+      "title": "Signed receipt matches the attested receipt key and this evidence"
+    },
+    {
+      "detail": "SHA-256(app-compose.json) = 9c78bf82dfad3a133838f2ac87406b3fe1c9d875d8a4d5fbe04e9f34d7d3b820 = measured compose-hash",
+      "id": "compose.app_compose_hash",
+      "status": "PASS",
+      "title": "Published app-compose.json hashes to the measured compose-hash"
+    },
+    {
+      "detail": "docker-compose.yml is byte-identical to the measured docker_compose_file (32280 bytes)",
+      "id": "compose.docker_compose",
+      "status": "PASS",
+      "title": "Published docker-compose.yml is the one inside the measured manifest"
+    },
+    {
+      "detail": "COMPOSE_DIGEST recomputes to sha256:96ba75d8d59d93069da02661e2e6078f82b4cd7d2745a5b8b528057809831da4 and equals the value the proxy reports",
+      "id": "compose.self_digest",
+      "status": "PASS",
+      "title": "COMPOSE_DIGEST recomputes from the published compose"
+    },
+    {
+      "detail": "9 services, 5 distinct images, all pinned by sha256 digest; policy digests present: runtime_image_digest, proxy_image_digest",
+      "id": "compose.images_pinned",
+      "status": "PASS",
+      "title": "Every container image is pinned by digest"
+    },
+    {
+      "detail": "operator-supplied (unmeasured) variables, each used only as a whole environment value: CLOUDFLARE_API_TOKEN, HF_TOKEN, METER_INGRESS_SHARED_SECRET, NV_ATTESTATION_SERVICE_KEY",
+      "id": "compose.unmeasured_inputs",
+      "status": "PASS",
+      "title": "Operator-supplied environment variables are exactly the policy's list"
+    },
+    {
+      "detail": "attest-proxy sets ENCLAVE_KEY_DIR, UPSTREAM_BEARER_TOKEN_FILE and CONFIDENTIAL_MODE, none of RECEIPT_SIGNING_SEED, METER_SIGNING_SEED, EHBP_IDENTITY_B64, UPSTREAM_BEARER_TOKEN is set or injectable, no literal credential in the compose; image sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b is listed as built from source that refuses those variables. Confirm that yourself: gh attestation verify oci://ghcr.io/adverserialai/attest-proxy@sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b -R AdverserialAI/attest-proxy",
+      "id": "compose.keys_in_enclave",
+      "status": "PASS",
+      "title": "The compose makes the proxy generate its keys inside the VM"
+    },
+    {
+      "detail": "sglang publishes no ports, sets no network_mode and is attached only to inference (internal: true), shared only with attest-proxy",
+      "id": "compose.inference_isolated",
+      "status": "PASS",
+      "title": "The model server is reachable only from the proxy, on an internal network"
+    },
+    {
+      "detail": "only attest-proxy publishes ports (443->8443); no service uses host or shared-container networking",
+      "id": "compose.single_ingress",
+      "status": "PASS",
+      "title": "Only the proxy publishes a port"
+    },
+    {
+      "detail": "all 5 connections presented SPKI sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI, the attested TLS key",
+      "id": "tls.live_spki",
+      "status": "PASS",
+      "title": "The live TLS certificate uses the attested TLS key"
+    },
+    {
+      "detail": "tls_spki_sha256 = sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI",
+      "id": "policy.tls_spki",
+      "status": "PASS",
+      "title": "Attested TLS key matches the policy pin"
+    },
+    {
+      "detail": "served key configuration carries the attested X25519 key",
+      "id": "keys.hpke_endpoint",
+      "status": "PASS",
+      "title": "/.well-known/hpke-keys serves the attested HPKE key"
+    },
+    {
+      "detail": "all 64 bytes of report_data = SHA-512(domain || statement); statement fields: ehbp_public_key, ehbp_public_key_sha256, issued_at, keys_origin, meter_pubkey_jwk, proxy_version, receipt_pubkey_jwk, tls_spki_sha256, type",
+      "id": "keyatt.report_data",
+      "status": "PASS",
+      "title": "Key attestation quote commits to the published key statement"
+    },
+    {
+      "detail": "signed up to Intel's root, TCB UpToDate, not debug, MRTD and RTMR0-3 identical to the fresh quote; its own event log replays to the same compose-hash",
+      "id": "keyatt.quote",
+      "status": "PASS",
+      "title": "Key attestation quote is genuine and from the same measured VM"
+    },
+    {
+      "detail": "type adverserial-key-attestation/v1, proxy v0.1.0-rc.33, issued 2026-11-26T00:39:38Z (1s from the fresh attestation)",
+      "id": "keyatt.statement",
+      "status": "PASS",
+      "title": "Key statement is the expected kind, current and not development-mode"
+    },
+    {
+      "detail": "keys_origin = enclave-generated, stated inside a hardware-signed quote by the measured proxy",
+      "id": "keyatt.keys_origin",
+      "status": "PASS",
+      "title": "The measured proxy states that it generated its keys inside the VM"
+    },
+    {
+      "detail": "statement lists the keys in use: receipt key lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ; pinned by the policy; EHBP key sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils; TLS key sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI = live certificate; TLS key pinned by the policy",
+      "id": "keyatt.keys_match",
+      "status": "PASS",
+      "title": "Key statement lists the receipt, HPKE and TLS keys actually in use"
+    },
+    {
+      "detail": "served JWKS holds exactly the attested Ed25519 meter key FY_z4-cVFnqN8AiPrLjiN14-iRFZIbFvOF9DabM1Eys",
+      "id": "keyatt.meter_key",
+      "status": "PASS",
+      "title": "The published billing (meter) key is the one in the key statement"
+    },
+    {
+      "detail": "informational, agrees with the attestation: version v0.1.0-rc.33, keys_origin enclave-generated, receipt_kid lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ, ehbp_public_key_sha256 sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils",
+      "id": "statusz.consistent",
+      "status": "PASS",
+      "title": "/statusz (unauthenticated) agrees with the attested values"
+    },
+    {
+      "detail": "8 GPUs (GH100): NRAS overall result true, per-GPU measres=success, secboot, debug disabled; evidence 2026-11-26T00:36:14Z",
+      "id": "gpu.evidence",
+      "status": "PASS",
+      "title": "NVIDIA attestation tokens are consistent and cover enough GPUs"
+    },
+    {
+      "detail": "9 tokens carry valid ES384 signatures from keys published at https://nras.attestation.nvidia.com",
+      "id": "gpu.signatures",
+      "status": "PASS",
+      "title": "NVIDIA tokens are signed by NVIDIA's attestation service"
+    },
+    {
+      "detail": "NOT VERIFIED BY DESIGN: the GPU evidence is not bound to the TDX quote or to your nonce (nonce source: nras-sdk). It is relayed by the measured collector and proxy.",
+      "id": "gpu.bound_to_vm",
+      "status": "N/A",
+      "title": "GPU evidence is cryptographically bound to this VM"
+    },
+    {
+      "detail": "GPU attestation by the OS is disabled by policy (attest_gpu=false). The measured manifest carries requirements.gpu_policy = {\"attest_gpu\":false} (gpu-policy-hash 930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d) and the event log has no gpu-attestation event: the OS released the VM's keys without attesting the GPUs or checking their confidential mode. Nothing in the measured boot chain verifies the GPUs' protected mode. What is checked instead is gpu.evidence and gpu.signatures (NVIDIA's remote attestation, not bound to the TDX quote).",
+      "id": "gpu.os_attestation",
+      "status": "WARN",
+      "title": "The OS attested the GPUs and their confidential mode before releasing keys"
+    }
+  ],
+  "mode": "live",
+  "summary": {
+    "advisory_ids": [],
+    "allowed_envs": [
+      "CLOUDFLARE_API_TOKEN",
+      "HF_TOKEN",
+      "METER_INGRESS_SHARED_SECRET",
+      "NV_ATTESTATION_SERVICE_KEY"
+    ],
+    "app_id": "b74e3dde6292cc69bac759b22fc723a299aa8a83",
+    "compose_digest": "sha256:96ba75d8d59d93069da02661e2e6078f82b4cd7d2745a5b8b528057809831da4",
+    "compose_hash": "9c78bf82dfad3a133838f2ac87406b3fe1c9d875d8a4d5fbe04e9f34d7d3b820",
+    "gpu": {
+      "generated_at": "2026-11-26T00:36:14Z",
+      "gpu_count": 8,
+      "hwmodels": [
+        "GH100"
+      ],
+      "nonce_source": "nras-sdk"
+    },
+    "gpu_os_attestation": "disabled-by-policy",
+    "gpu_policy_hash": "930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d",
+    "images": [
+      "ghcr.io/adverserialai/attest-proxy@sha256:5a41bcfb6d7f4f3d3df53ad5ac39a45d1d32a6db206e35c0380b81d56404824b",
+      "ghcr.io/adverserialai/gpu-evidence-collector@sha256:88484069fde3c53f054b7d02645ab075166a24c0a43c2006723f148941967f06",
+      "vllm/vllm-openai@sha256:91ee972ab751fb7180bc71c175865e36b091686600dca783d52b2511399810b3",
+      "ghcr.io/adverserialai/model-measurer@sha256:5f5f0653a7f75a1414a68a0e063ba7fb628f225cfb81e3a21512c206c7f4ad82",
+      "lmsysorg/sglang@sha256:b4f09a2ccbcfcc262d49600c3cd7f8581a793ea7d104947257b6a95500953b90"
+    ],
+    "instance_id": "3ab325a3d33ac30b0ce0bb32f8a95182deeda3a0",
+    "issued_at": "2026-11-26T00:39:37Z",
+    "key_provider_sha256": "4e633ed650841cfce58c6538bc2eeea1b3828c4a89a2bf7cca5995f35dca42b7",
+    "key_statement_sha256": "c8af1c0b9f52bc269bf05bea75b721e639d00fb8ca13672cbb74657eb1e659cf",
+    "keys": {
+      "ehbp_public_key_sha256": "sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils",
+      "key_statement": {
+        "ehbp_public_key": "rvxvtM153lLljoEYRxuFLTey-jlfVjtR-Qb4Doux6Xc",
+        "ehbp_public_key_sha256": "sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils",
+        "issued_at": "2026-11-26T00:39:38Z",
+        "keys_origin": "enclave-generated",
+        "meter_pubkey_jwk": {
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "kid": "FY_z4-cVFnqN8AiPrLjiN14-iRFZIbFvOF9DabM1Eys",
+          "kty": "OKP",
+          "use": "sig",
+          "x": "56FqTaTK7Pbxo4vO0H3_W3wIX7FDdT8h2Xbfaq3-cCE"
+        },
+        "proxy_version": "v0.1.0-rc.33",
+        "receipt_pubkey_jwk": {
+          "crv": "P-256",
+          "kid": "lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ",
+          "kty": "EC",
+          "x": "CdTO7qIlUJb_OSArpwvjC4anHSzWiBEihCUPblv6FQI",
+          "y": "ZI33qb89rrjMDJuIfkhai11g099_Aj1vY6-IJVsuDmo"
+        },
+        "tls_spki_sha256": "sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI",
+        "type": "adverserial-key-attestation/v1"
+      },
+      "keys_origin": "enclave-generated",
+      "meter_kid": "FY_z4-cVFnqN8AiPrLjiN14-iRFZIbFvOF9DabM1Eys",
+      "receipt_kid": "lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ"
+    },
+    "live_tls_spki_sha256": "sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI",
+    "measurements": {
+      "mrtd": "83baf004a06c83f6371d4d9e19c8bb1ead734ba7696e56d6b52271011394a6f24efecc27af3b5c1da41594dbfa706e97",
+      "rtmr0": "d8f547a53863772b1a8b64f6b9ae70ad98549fbb44628d2f07c8ed6f883ce6288611538b27dac0eb5baa216a4154a8bd",
+      "rtmr1": "2f72a4db2f7de90adeabe55607b0c1cf209fc243bc773f5862d1b00d3bb198e835e99d502e90a24005f0d1368dd24f29",
+      "rtmr2": "3d9910a33a26a769c5146dea31bea0d2924a7746ad09e121dabe709eddd5c647716f4d89279e0e24d8dbb93f9cdb605b",
+      "rtmr3": "c1647d2ae822e35681ad1e73c626bbfa6a1d39e7782e93993ab312f59e111b8dc9bf949fe032f9367c4fd6c119d9ecdf"
+    },
+    "meter_kid": "FY_z4-cVFnqN8AiPrLjiN14-iRFZIbFvOF9DabM1Eys",
+    "model_digest": "sha256:bd18db14b7f1e98b93401d194d62c7e3b6282c7751ae1a9d523079b03e84c90e",
+    "nonce": "18_434oJde_IKPK-bD0yfNO9925cEVuVfGrwL9HAMNw",
+    "os_image_hash": "4771a29e03e93f0e2d5e37174cd8bb1112942c9689deb36b16c5df9e183d8623",
+    "proxy_version": "v0.1.0-rc.33",
+    "statusz": {
+      "ehbp_public_key_sha256": "sha256:POAVm8aPkusnxdx7f_nnZ8nQ8dLq_L6VkT7zCtxjils",
+      "keys_origin": "enclave-generated",
+      "receipt_kid": "lsfakkya9o5p_e92fa8iLOZekwqsZzTJFwG839GXnLQ",
+      "version": "v0.1.0-rc.33"
+    },
+    "tcb_status": "UpToDate",
+    "tls_spki_sha256": "sha256:sG2necy2fO2FF9K6Uivb7mEp43Arjd9q4X5yR-Ac2rI",
+    "verified_at": "2026-11-26T00:39:36Z",
+    "warnings": [
+      {
+        "detail": "GPU attestation by the OS is disabled by policy (attest_gpu=false). The measured manifest carries requirements.gpu_policy = {\"attest_gpu\":false} (gpu-policy-hash 930188e08f58d0c555acff500a40be79c1f7e1d9ae23d26d901486cc9cc1a77d) and the event log has no gpu-attestation event: the OS released the VM's keys without attesting the GPUs or checking their confidential mode. Nothing in the measured boot chain verifies the GPUs' protected mode. What is checked instead is gpu.evidence and gpu.signatures (NVIDIA's remote attestation, not bound to the TDX quote).",
+        "id": "gpu.os_attestation"
+      }
+    ]
+  },
+  "verdict": "PASS"
+}
